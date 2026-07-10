@@ -6,6 +6,7 @@ const products = document.querySelectorAll("[data-category]");
 const lightbox = document.querySelector("[data-lightbox]");
 const lightboxImg = document.querySelector("[data-lightbox-img]");
 const lightboxClose = document.querySelector("[data-lightbox-close]");
+const whatsappBase = "https://wa.me/989192531804";
 
 const setHeaderState = () => {
   if (!header) return;
@@ -44,6 +45,28 @@ document.querySelectorAll(".thumbs").forEach((thumbs) => {
   thumbs.querySelector("button")?.classList.add("is-active");
 });
 
+document.querySelectorAll("img").forEach((image, index) => {
+  image.decoding = "async";
+  if (index > 3 && !image.closest(".hero-lux")) {
+    image.loading = "lazy";
+  }
+});
+
+document.querySelectorAll(".lux-card").forEach((card) => {
+  if (card.querySelector(".card-order")) return;
+
+  const model = card.querySelector("h3")?.textContent?.trim() || "مدل باران";
+  const tag = card.querySelector(".tag")?.textContent?.trim() || "سرویس حوله";
+  const message = `سلام، برای استعلام و سفارش مدل ${model} (${tag}) از سایت حوله باران پیام می‌دهم.`;
+  const link = document.createElement("a");
+  link.className = "card-order";
+  link.href = `${whatsappBase}?text=${encodeURIComponent(message)}`;
+  link.target = "_blank";
+  link.rel = "noreferrer";
+  link.textContent = "استعلام این مدل";
+  card.append(link);
+});
+
 const openLightbox = (image) => {
   if (!lightbox || !lightboxImg || !image) return;
   lightboxImg.src = image.currentSrc || image.src;
@@ -62,6 +85,10 @@ const closeLightbox = () => {
 };
 
 document.addEventListener("click", (event) => {
+  if (event.target.closest(".card-order")) {
+    return;
+  }
+
   const thumbButton = event.target.closest(".thumbs button");
 
   if (thumbButton) {
