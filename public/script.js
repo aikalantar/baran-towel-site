@@ -1,130 +1,120 @@
-const header = document.querySelector("[data-header]");
-const nav = document.querySelector("[data-nav]");
-const menuToggle = document.querySelector("[data-menu-toggle]");
-const filterButtons = document.querySelectorAll("[data-filter]");
-const products = document.querySelectorAll("[data-category]");
-const lightbox = document.querySelector("[data-lightbox]");
-const lightboxImg = document.querySelector("[data-lightbox-img]");
-const lightboxClose = document.querySelector("[data-lightbox-close]");
-const whatsappBase = "https://wa.me/989192531804";
+(() => {
+  const body = document.body;
+  const menuButton = document.querySelector('[data-menu-toggle]');
+  const drawer = document.querySelector('[data-drawer]');
+  const backdrop = document.querySelector('[data-menu-backdrop]');
+  const closeButton = document.querySelector('[data-menu-close]');
+  let menuReturnFocus = null;
 
-const setHeaderState = () => {
-  if (!header) return;
-  header.classList.toggle("is-scrolled", window.scrollY > 18 || document.body.classList.contains("catalog-body"));
-};
+  const focusable = (root) =>
+    [...root.querySelectorAll('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])')];
 
-setHeaderState();
-window.addEventListener("scroll", setHeaderState, { passive: true });
+  const closeMenu = () => {
+    if (!drawer || !menuButton) return;
+    drawer.classList.remove('is-open');
+    backdrop?.classList.remove('is-visible');
+    menuButton.setAttribute('aria-expanded', 'false');
+    body.classList.remove('menu-open');
+    menuReturnFocus?.focus();
+  };
 
-if (menuToggle && nav) {
-  menuToggle.addEventListener("click", () => {
-    const isOpen = nav.classList.toggle("is-open");
-    menuToggle.setAttribute("aria-expanded", String(isOpen));
+  const openMenu = () => {
+    if (!drawer || !menuButton) return;
+    menuReturnFocus = document.activeElement;
+    drawer.classList.add('is-open');
+    backdrop?.classList.add('is-visible');
+    menuButton.setAttribute('aria-expanded', 'true');
+    body.classList.add('menu-open');
+    closeButton?.focus();
+  };
+
+  menuButton?.addEventListener('click', () => {
+    menuButton.getAttribute('aria-expanded') === 'true' ? closeMenu() : openMenu();
+  });
+  closeButton?.addEventListener('click', closeMenu);
+  backdrop?.addEventListener('click', closeMenu);
+  drawer?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeMenu));
+
+  drawer?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Tab') return;
+    const items = focusable(drawer);
+    if (!items.length) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
   });
 
-  nav.querySelectorAll("a").forEach((link) => {
-    link.addEventListener("click", () => {
-      nav.classList.remove("is-open");
-      menuToggle.setAttribute("aria-expanded", "false");
-    });
-  });
-}
+  const lightbox = document.querySelector('[data-lightbox]');
+  const lightboxImage = lightbox?.querySelector('[data-lightbox-image]');
+  const lightboxCaption = lightbox?.querySelector('[data-lightbox-caption]');
+  const lightboxClose = lightbox?.querySelector('[data-lightbox-close]');
+  const previousButton = lightbox?.querySelector('[data-lightbox-prev]');
+  const nextButton = lightbox?.querySelector('[data-lightbox-next]');
+  const zoomables = [...document.querySelectorAll('[data-zoom]')];
+  let currentIndex = 0;
+  let lightboxReturnFocus = null;
 
-filterButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    const filter = button.dataset.filter;
-    filterButtons.forEach((item) => item.classList.toggle("is-active", item === button));
-    products.forEach((product) => {
-      const shouldShow = filter === "all" || product.dataset.category === filter;
-      product.classList.toggle("is-hidden", !shouldShow);
-    });
-  });
-});
+  const showImage = (index) => {
+    if (!lightboxImage || !zoomables.length) return;
+    currentIndex = (index + zoomables.length) % zoomables.length;
+    const source = zoomables[currentIndex];
+    lightboxImage.src = source.currentSrc || source.src;
+    lightboxImage.alt = source.alt;
+    if (lightboxCaption) lightboxCaption.textContent = source.alt;
+  };
 
-document.querySelectorAll(".thumbs").forEach((thumbs) => {
-  thumbs.querySelector("button")?.classList.add("is-active");
-});
+  const closeLightbox = () => {
+    if (!lightbox) return;
+    lightbox.close();
+    body.classList.remove('lightbox-open');
+    lightboxReturnFocus?.focus();
+  };
 
-document.querySelectorAll("img").forEach((image, index) => {
-  image.decoding = "async";
-  if (index > 3 && !image.closest(".hero-lux")) {
-    image.loading = "lazy";
-  }
-});
+  const openLightbox = (index) => {
+    if (!lightbox) return;
+    lightboxReturnFocus = document.activeElement;
+    showImage(index);
+    lightbox.showModal();
+    body.classList.add('lightbox-open');
+    lightboxClose?.focus();
+  };
 
-document.querySelectorAll(".lux-card").forEach((card) => {
-  if (card.querySelector(".card-order")) return;
-
-  const model = card.querySelector("h3")?.textContent?.trim() || "مدل باران";
-  const tag = card.querySelector(".tag")?.textContent?.trim() || "سرویس حوله";
-  const message = `سلام، برای استعلام و سفارش مدل ${model} (${tag}) از سایت حوله باران پیام می‌دهم.`;
-  const link = document.createElement("a");
-  link.className = "card-order";
-  link.href = `${whatsappBase}?text=${encodeURIComponent(message)}`;
-  link.target = "_blank";
-  link.rel = "noreferrer";
-  link.textContent = "استعلام این مدل";
-  card.append(link);
-});
-
-const openLightbox = (image) => {
-  if (!lightbox || !lightboxImg || !image) return;
-  lightboxImg.src = image.currentSrc || image.src;
-  lightboxImg.alt = image.alt || "";
-  lightbox.classList.add("is-open");
-  lightbox.setAttribute("aria-hidden", "false");
-  document.body.style.overflow = "hidden";
-};
-
-const closeLightbox = () => {
-  if (!lightbox || !lightboxImg) return;
-  lightbox.classList.remove("is-open");
-  lightbox.setAttribute("aria-hidden", "true");
-  lightboxImg.removeAttribute("src");
-  document.body.style.overflow = "";
-};
-
-document.addEventListener("click", (event) => {
-  if (event.target.closest(".card-order")) {
-    return;
-  }
-
-  const thumbButton = event.target.closest(".thumbs button");
-
-  if (thumbButton) {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const card = thumbButton.closest(".lux-card, .design-gallery article");
-    const thumbImage = thumbButton.querySelector("img");
-    const mainImage = card?.querySelector(":scope > img.zoomable, :scope > img.card-main");
-
-    if (thumbImage && mainImage) {
-      mainImage.src = thumbImage.src;
-      thumbButton.parentElement.querySelectorAll("button").forEach((button) => {
-        button.classList.toggle("is-active", button === thumbButton);
+  zoomables.forEach((image, index) => {
+    const trigger = image.closest('button') || image;
+    if (trigger === image) {
+      image.tabIndex = 0;
+      image.setAttribute('role', 'button');
+      image.setAttribute('aria-label', `${image.alt}؛ نمایش تصویر بزرگ`);
+      image.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          openLightbox(index);
+        }
       });
     }
+    trigger.addEventListener('click', () => openLightbox(index));
+  });
 
-    return;
-  }
+  lightboxClose?.addEventListener('click', closeLightbox);
+  previousButton?.addEventListener('click', () => showImage(currentIndex - 1));
+  nextButton?.addEventListener('click', () => showImage(currentIndex + 1));
+  lightbox?.addEventListener('click', (event) => {
+    if (event.target === lightbox) closeLightbox();
+  });
 
-  const zoomable = event.target.closest("img.zoomable");
-  if (zoomable && !zoomable.closest(".thumbs")) {
-    openLightbox(zoomable);
-  }
-});
-
-lightboxClose?.addEventListener("click", closeLightbox);
-
-lightbox?.addEventListener("click", (event) => {
-  if (event.target === lightbox) {
-    closeLightbox();
-  }
-});
-
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") {
-    closeLightbox();
-  }
-});
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      if (lightbox?.open) closeLightbox();
+      else closeMenu();
+    }
+    if (!lightbox?.open) return;
+    if (event.key === 'ArrowLeft') showImage(currentIndex - 1);
+    if (event.key === 'ArrowRight') showImage(currentIndex + 1);
+  });
+})();
