@@ -1,0 +1,43 @@
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+# Canonical HTML always revalidates.
+/
+  Cache-Control: public, max-age=0, must-revalidate
+/catalog/
+  Cache-Control: public, max-age=0, must-revalidate
+/blog/
+  Cache-Control: public, max-age=0, must-revalidate
+/blog/*
+  Cache-Control: public, max-age=0, must-revalidate
+/en/
+  Cache-Control: public, max-age=0, must-revalidate
+/en/catalog/
+  Cache-Control: public, max-age=0, must-revalidate
+/en/blog/
+  Cache-Control: public, max-age=0, must-revalidate
+/en/blog/*
+  Cache-Control: public, max-age=0, must-revalidate
+
+# Versioned brand and browser icons are immutable.
+/styles.d3f246a045.css
+  Cache-Control: public, max-age=31536000, immutable
+/script.62a2e3d69f.js
+  Cache-Control: public, max-age=31536000, immutable
+/assets/images/brand/baran-logo-transparent-v2.png
+  Cache-Control: public, max-age=31536000, immutable
+/favicon-v2.ico
+  Cache-Control: public, max-age=31536000, immutable
+/favicon-*-v2.png
+  Cache-Control: public, max-age=31536000, immutable
+/apple-touch-icon-v2.png
+  Cache-Control: public, max-age=31536000, immutable
+/icon-*-v2.png
+  Cache-Control: public, max-age=31536000, immutable
+
+# Keep the duplicate workers.dev hostname out of search results.
+https://:version.:subdomain.workers.dev/*
+  X-Robots-Tag: noindex

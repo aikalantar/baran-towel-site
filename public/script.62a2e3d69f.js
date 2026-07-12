@@ -10,7 +10,7 @@
     [...root.querySelectorAll('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])')];
 
   const closeMenu = () => {
-    if (!drawer || !menuButton) return;
+    if (!drawer || !menuButton || menuButton.getAttribute('aria-expanded') === 'false') return;
     drawer.classList.remove('is-open');
     backdrop?.classList.remove('is-visible');
     menuButton.setAttribute('aria-expanded', 'false');
@@ -57,6 +57,7 @@
   const previousButton = lightbox?.querySelector('[data-lightbox-prev]');
   const nextButton = lightbox?.querySelector('[data-lightbox-next]');
   const zoomables = [...document.querySelectorAll('[data-zoom]')];
+  const isEnglish = document.documentElement.lang === 'en';
   let currentIndex = 0;
   let lightboxReturnFocus = null;
 
@@ -70,7 +71,7 @@
   };
 
   const closeLightbox = () => {
-    if (!lightbox) return;
+    if (!lightbox?.open) return;
     lightbox.close();
     body.classList.remove('lightbox-open');
     lightboxReturnFocus?.focus();
@@ -90,7 +91,7 @@
     if (trigger === image) {
       image.tabIndex = 0;
       image.setAttribute('role', 'button');
-      image.setAttribute('aria-label', `${image.alt}؛ نمایش تصویر بزرگ`);
+      image.setAttribute('aria-label', isEnglish ? `${image.alt}; enlarge image` : `${image.alt}؛ نمایش تصویر بزرگ`);
       image.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
@@ -117,4 +118,19 @@
     if (event.key === 'ArrowLeft') showImage(currentIndex - 1);
     if (event.key === 'ArrowRight') showImage(currentIndex + 1);
   });
+
+  const revealItems = [...document.querySelectorAll('.reveal')];
+  if (revealItems.length && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.documentElement.classList.add('motion-ready');
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add('is-visible');
+        observer.unobserve(entry.target);
+      });
+    }, { threshold: .12, rootMargin: '0px 0px -4% 0px' });
+    revealItems.forEach((item) => observer.observe(item));
+  } else {
+    revealItems.forEach((item) => item.classList.add('is-visible'));
+  }
 })();

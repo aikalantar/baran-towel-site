@@ -1,0 +1,29 @@
+# Canonical homepage and retired Persian paths
+/index.html / 301
+/index / 301
+/home / 301
+/fa / 301
+/fa/ / 301
+/fa/index.html / 301
+
+# Persian canonical routes
+/catalog /catalog/ 301
+/catalog.html /catalog/ 301
+/catalog/index.html /catalog/ 301
+/blog /blog/ 301
+/blog/index.html /blog/ 301
+/blog/rahnamaye-kharid-hole-luxury /blog/rahnamaye-kharid-hole-luxury/ 301
+/blog/rahnamaye-kharid-hole-luxury.html /blog/rahnamaye-kharid-hole-luxury/ 301
+/blog/rahnamaye-kharid-hole-luxury/index.html /blog/rahnamaye-kharid-hole-luxury/ 301
+
+# English canonical routes
+/en /en/ 301
+/en/index.html /en/ 301
+/en/catalog /en/catalog/ 301
+/en/catalog.html /en/catalog/ 301
+/en/catalog/index.html /en/catalog/ 301
+/en/blog /en/blog/ 301
+/en/blog/index.html /en/blog/ 301
+/en/blog/how-to-choose-luxury-towels /en/blog/how-to-choose-luxury-towels/ 301
+/en/blog/how-to-choose-luxury-towels.html /en/blog/how-to-choose-luxury-towels/ 301
+/en/blog/how-to-choose-luxury-towels/index.html /en/blog/how-to-choose-luxury-towels/ 301
