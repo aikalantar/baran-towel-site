@@ -23,11 +23,11 @@
   Cache-Control: public, max-age=0, must-revalidate
 
 # Versioned brand and browser icons are immutable.
-/styles.d3f246a045.css
+/styles.bcb4b8838f.css
   Cache-Control: public, max-age=31536000, immutable
 /script.62a2e3d69f.js
   Cache-Control: public, max-age=31536000, immutable
-/assets/images/brand/baran-logo-transparent-v2.png
+/assets/images/brand/baran-logo.png
   Cache-Control: public, max-age=31536000, immutable
 /favicon-v2.ico
   Cache-Control: public, max-age=31536000, immutable

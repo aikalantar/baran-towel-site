@@ -2,7 +2,14 @@ import fs from 'node:fs';
 
 const endpoint = 'http://127.0.0.1:9223';
 const base = 'http://127.0.0.1:4175';
-const screenshots = new Set(['/-1440', '/-375', '/catalog/-375', '/en/blog/how-to-choose-luxury-towels/-1024']);
+const screenshots = new Set(['/-1440', '/-320', '/-375', '/-768', '/-1024', '/catalog/-375', '/en/-375', '/en/blog/how-to-choose-luxury-towels/-1024']);
+const languageMap = new Map([
+  ['/', '/en/'], ['/en/', '/'],
+  ['/catalog/', '/en/catalog/'], ['/en/catalog/', '/catalog/'],
+  ['/blog/', '/en/blog/'], ['/en/blog/', '/blog/'],
+  ['/blog/rahnamaye-kharid-hole-luxury/', '/en/blog/how-to-choose-luxury-towels/'],
+  ['/en/blog/how-to-choose-luxury-towels/', '/blog/rahnamaye-kharid-hole-luxury/']
+]);
 
 async function createPage() {
   const response = await fetch(`${endpoint}/json/new?${encodeURIComponent(base)}`, { method: 'PUT' });
@@ -75,14 +82,35 @@ for (const [route, width] of cases) {
     overflow: document.documentElement.scrollWidth > innerWidth + 1,
     broken: [...document.images].filter(i => !i.matches('[data-lightbox-image]') && (!i.complete || !i.naturalWidth)).map(i => i.src),
     title: document.title,
-    footerColumns: document.querySelectorAll('.global-footer .footer-column').length,
+    footerGroups: document.querySelectorAll('.global-footer .footer-column').length,
+    footerComputedColumns: getComputedStyle(document.querySelector('.footer-grid')).gridTemplateColumns.split(' ').filter(Boolean).length,
+    footerRows: new Set([...document.querySelectorAll('.global-footer .footer-column')].map(x => Math.round(x.getBoundingClientRect().top))).size,
     telegramLinks: document.querySelectorAll('a[href^="https://t.me/baran_bathrobe"]').length,
     telegramOnlyInFooter: [...document.querySelectorAll('a[href^="https://t.me/baran_bathrobe"]')].every(a => a.closest('.global-footer')),
     unavailableAnchors: document.querySelectorAll('.is-unavailable a, a[href="#"]').length,
     goldenLabels: document.querySelectorAll('.eyebrow').length,
-    transparentLogo: document.querySelectorAll('.site-header img[src*="baran-logo-transparent-v2.png"]').length === 1,
-    hashedAssets: !!document.querySelector('link[href*="styles.d3f246a045.css"]') && !!document.querySelector('script[src*="script.62a2e3d69f.js"]')
+    newLogo: document.querySelectorAll('.site-header img[src="/assets/images/brand/baran-logo.png"][width="1024"][height="1024"]').length === 1,
+    oldLogoActive: !!document.querySelector('[src*="baran-logo-transparent-v2"], [href*="baran-logo-transparent-v2"]') || document.documentElement.innerHTML.includes('baran-logo-transparent-v2'),
+    languageSwitchers: document.querySelectorAll('.language-switcher').length,
+    languageOutsideDrawer: !!document.querySelector('.site-header .header-controls > .language-switcher') && !document.querySelector('.side-drawer .language-switcher, .drawer-nav [lang]'),
+    languageHref: document.querySelector('.language-switcher')?.getAttribute('href'),
+    hashedAssets: !!document.querySelector('link[href*="styles.bcb4b8838f.css"]') && !!document.querySelector('script[src*="script.62a2e3d69f.js"]')
   }))()`);
+  metrics.languageEquivalent = metrics.languageHref === languageMap.get(metrics.route);
+  Object.assign(metrics, await evalValue(`(()=>{
+    const logo=document.querySelector('.brand img').getBoundingClientRect();
+    const controls=document.querySelector('.header-controls').getBoundingClientRect();
+    const language=document.querySelector('.language-switcher').getBoundingClientRect();
+    const menu=document.querySelector('[data-menu-toggle]').getBoundingClientRect();
+    const footer=document.querySelector('.footer-grid').getBoundingClientRect();
+    const overlaps=(a,b)=>a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    return {
+      logoWidth: Math.round(logo.width),
+      logoNoCollision: !overlaps(logo, controls),
+      headerControlsAdjacent: Math.abs(language.right-menu.left)<=10 || Math.abs(menu.right-language.left)<=10,
+      footerInsideViewport: footer.left >= -1 && footer.right <= innerWidth + 1
+    };
+  })()`));
   metrics.menuAtLogicalStart = await evalValue(`(()=>{const r=document.querySelector('[data-menu-toggle]').getBoundingClientRect();return document.documentElement.dir==='rtl'?r.left>innerWidth/2:r.right<innerWidth/2})()`);
   if (screenshots.has(`${route}-${width}`)) {
     const shot = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
@@ -90,34 +118,44 @@ for (const [route, width] of cases) {
     fs.mkdirSync('test/screenshots', { recursive: true });
     fs.writeFileSync(`test/screenshots/${safe}-${width}.png`, Buffer.from(shot.data, 'base64'));
   }
+  if (route === '/' && (width === 320 || width === 1440)) {
+    await evalValue(`scrollTo(0, document.documentElement.scrollHeight)`);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const footerShot = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    fs.writeFileSync(`test/screenshots/footer-${width}.png`, Buffer.from(footerShot.data, 'base64'));
+    await evalValue(`scrollTo(0, 0)`);
+  }
   if (route === '/' || route === '/en/') {
     Object.assign(metrics, await evalValue(`(()=>{
       const header=document.querySelector('.site-header');
       const hero=document.querySelector('.hero');
       const image=document.querySelector('.hero-media');
       const title=document.querySelector('.hero h1');
+      const panel=document.querySelector('.hero-copy__panel');
       const editorial=document.querySelector('.editorial');
       const partnership=document.querySelector('.partnership');
       const actions=[...partnership.querySelectorAll('.partnership-action')];
       const expected=document.documentElement.lang==='fa' ? [
         'سلام.\\nوب‌سایت باران را مشاهده کردم و مایل به دریافت اطلاعات محصولات، قیمت و نحوه ثبت سفارش هستم.\\nلطفاً راهنمایی بفرمایید.\\nسپاسگزارم.',
-        'سلام.\\nوب‌سایت باران را مشاهده کردم و مایل هستم درباره فرصت همکاری تجاری با برند باران اطلاعات بیشتری دریافت کنم.\\nلطفاً شرایط همکاری را برای من ارسال بفرمایید.\\nسپاسگزارم.',
-        'سلام.\\nوب‌سایت باران را مشاهده کردم و مایل هستم با مجموعه باران در ارتباط باشم.\\nلطفاً راهنمایی بفرمایید.\\nسپاسگزارم.'
+        'سلام.\\nوب‌سایت باران را مشاهده کردم و مایل هستم درباره فرصت همکاری تجاری با برند باران اطلاعات بیشتری دریافت کنم.\\nلطفاً شرایط همکاری را برای من ارسال بفرمایید.\\nسپاسگزارم.'
       ] : [
         'Hello.\\nI visited the Baran website and would like information about the products, pricing and how to place an order.\\nPlease guide me.\\nThank you.',
-        'Hello.\\nI visited the Baran website and would like to learn more about commercial partnership opportunities with Baran.\\nPlease send me the partnership details.\\nThank you.',
-        'Hello.\\nI visited the Baran website and would like to get in touch with the Baran team.\\nPlease guide me.\\nThank you.'
+        'Hello.\\nI visited the Baran website and would like to learn more about commercial partnership opportunities with Baran.\\nPlease send me the partnership details.\\nThank you.'
       ];
+      const panelStyle=getComputedStyle(panel);
       return {
         headerSeparate: header.getBoundingClientRect().bottom <= hero.getBoundingClientRect().top + 1,
         heroImageBlurred: getComputedStyle(image).filter.includes('blur(2px)'),
         heroTextSharp: getComputedStyle(title).filter === 'none',
         heroTextGrey: getComputedStyle(title).color === 'rgb(89, 94, 91)',
+        heroPanelRemoved: panelStyle.backgroundColor === 'rgba(0, 0, 0, 0)' && panelStyle.borderLeftWidth === '0px' && panelStyle.borderRightWidth === '0px' && panelStyle.boxShadow === 'none' && panelStyle.backdropFilter === 'none',
         editorialCaptions: [...document.querySelectorAll('.editorial figcaption')].map(x=>x.textContent.trim()),
         editorialResponsive: innerWidth <= 640 ? editorial.scrollWidth > editorial.clientWidth && getComputedStyle(editorial).scrollSnapType.includes('mandatory') : getComputedStyle(editorial).gridTemplateColumns.split(' ').length === 3,
         partnershipBeforeFooter: document.querySelector('main').lastElementChild === partnership && document.querySelector('main').nextElementSibling?.matches('.global-footer'),
-        partnershipLinks: actions.length === 3 && actions.every(a=>a.href.startsWith('https://wa.me/989192531804?text=') && a.target==='_blank' && a.rel.includes('noopener')),
-        whatsappMessages: actions.length === 3 && actions.every((a,i)=>new URL(a.href).searchParams.get('text')===expected[i]),
+        partnershipLinks: actions.length === 3 && actions.slice(0,2).every(a=>a.href.startsWith('https://wa.me/989192531804?text=') && a.target==='_blank' && a.rel.includes('noopener')) && actions[2].getAttribute('href')==='tel:+989192531804',
+        whatsappMessages: actions.length === 3 && actions.slice(0,2).every((a,i)=>new URL(a.href).searchParams.get('text')===expected[i]),
+        partnershipCallLabel: actions[2].getAttribute('aria-label') === (document.documentElement.lang==='fa' ? 'تماس تلفنی با باران' : 'Call Baran'),
+        footerCallMatches: [...document.querySelectorAll('.global-footer a[href^="tel:"]')].length === 1 && document.querySelector('.global-footer a[href^="tel:"]')?.getAttribute('href') === actions[2].getAttribute('href'),
         partnershipHasTelegram: !!partnership.querySelector('a[href*="t.me"]'),
         visiblePhone: document.body.innerText.includes('+98 919 253 1804') || document.body.innerText.includes('+989192531804'),
         introBold: parseInt(getComputedStyle(document.querySelector('.intro h2')).fontWeight,10) >= 700,
@@ -147,6 +185,6 @@ await reducedLoaded;
 const reducedMotion = await evalValue(`(()=>{const r=document.querySelector('.reveal');const s=getComputedStyle(r);return s.opacity==='1' && (s.transform==='none' || s.transform.includes('matrix(1, 0, 0, 1, 0, 0)'))})()`);
 
 console.log(JSON.stringify({ results, consoleErrors, reducedMotion }, null, 2));
-const failed = results.some((item) => item.h1 !== 1 || item.overflow || item.broken.length || !item.menuAtLogicalStart || item.footerColumns !== 4 || item.telegramLinks !== 1 || !item.telegramOnlyInFooter || item.unavailableAnchors || item.goldenLabels || !item.transparentLogo || !item.hashedAssets || ((item.route === '/' || item.route === '/en/') && (!item.headerSeparate || !item.heroImageBlurred || !item.heroTextSharp || !item.heroTextGrey || !item.editorialResponsive || !item.partnershipBeforeFooter || !item.partnershipLinks || !item.whatsappMessages || item.partnershipHasTelegram || item.visiblePhone || !item.introBold || !item.introJustified || !item.menuOpened || !item.menuFocusManaged || !item.overlayClosedMenu || !item.menuClosed || !item.lightboxOpened || !item.lightboxClosed))) || consoleErrors.length || !reducedMotion;
+const failed = results.some((item) => item.h1 !== 1 || item.overflow || item.broken.length || !item.menuAtLogicalStart || item.footerGroups !== 4 || item.footerComputedColumns !== 2 || item.footerRows !== 2 || !item.footerInsideViewport || item.telegramLinks !== 1 || !item.telegramOnlyInFooter || item.unavailableAnchors || item.goldenLabels || !item.newLogo || item.oldLogoActive || item.languageSwitchers !== 1 || !item.languageOutsideDrawer || !item.languageEquivalent || !item.logoNoCollision || !item.headerControlsAdjacent || !item.hashedAssets || ((item.route === '/' || item.route === '/en/') && (!item.headerSeparate || !item.heroImageBlurred || !item.heroTextSharp || !item.heroTextGrey || !item.heroPanelRemoved || !item.editorialResponsive || !item.partnershipBeforeFooter || !item.partnershipLinks || !item.whatsappMessages || !item.partnershipCallLabel || !item.footerCallMatches || item.partnershipHasTelegram || item.visiblePhone || !item.introBold || !item.introJustified || !item.menuOpened || !item.menuFocusManaged || !item.overlayClosedMenu || !item.menuClosed || !item.lightboxOpened || !item.lightboxClosed))) || consoleErrors.length || !reducedMotion;
 page.socket.close();
 if (failed) process.exitCode = 1;
