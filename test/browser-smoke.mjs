@@ -88,6 +88,7 @@ for (const [route, width] of cases) {
     telegramLinks: document.querySelectorAll('a[href^="https://t.me/baran_bathrobe"]').length,
     telegramOnlyInFooter: [...document.querySelectorAll('a[href^="https://t.me/baran_bathrobe"]')].every(a => a.closest('.global-footer')),
     unavailableAnchors: document.querySelectorAll('.is-unavailable a, a[href="#"]').length,
+    emailLinks: document.querySelectorAll('a[href="mailto:hello@luxtowelco.com"]').length,
     goldenLabels: document.querySelectorAll('.eyebrow').length,
     newLogo: document.querySelectorAll('.site-header img[src="/assets/images/brand/baran-logo.png"][width="1024"][height="1024"]').length === 1,
     oldLogoActive: !!document.querySelector('[src*="baran-logo-transparent-v2"], [href*="baran-logo-transparent-v2"]') || document.documentElement.innerHTML.includes('baran-logo-transparent-v2'),
@@ -95,7 +96,7 @@ for (const [route, width] of cases) {
     languageOutsideDrawer: !!document.querySelector('.site-header .header-controls > .language-switcher') && !document.querySelector('.side-drawer .language-switcher, .drawer-nav [lang]'),
     languageHref: document.querySelector('.language-switcher')?.getAttribute('href'),
     paletteTokens: ['--olive','--gold','--sage','--paper','--ink'].map(name => getComputedStyle(document.documentElement).getPropertyValue(name).trim().toLowerCase()),
-    hashedAssets: !!document.querySelector('link[href*="styles.646ee293ad.css"]') && !!document.querySelector('script[src*="script.62a2e3d69f.js"]')
+    hashedAssets: !!document.querySelector('link[href*="styles.d64fc2068c.css"]') && !!document.querySelector('script[src*="script.62a2e3d69f.js"]')
   }))()`);
   metrics.languageEquivalent = metrics.languageHref === languageMap.get(metrics.route);
   Object.assign(metrics, await evalValue(`(()=>{
@@ -133,6 +134,7 @@ for (const [route, width] of cases) {
       const image=document.querySelector('.hero-media');
       const title=document.querySelector('.hero h1');
       const panel=document.querySelector('.hero-copy__panel');
+      const drawer=document.querySelector('[data-drawer]');
       const editorial=document.querySelector('.editorial');
       const partnership=document.querySelector('.partnership');
       const actions=[...partnership.querySelectorAll('.partnership-action')];
@@ -148,7 +150,7 @@ for (const [route, width] of cases) {
         headerSeparate: header.getBoundingClientRect().bottom <= hero.getBoundingClientRect().top + 1,
         heroImageBlurred: getComputedStyle(image).filter.includes('blur(2px)'),
         heroTextSharp: getComputedStyle(title).filter === 'none',
-        heroTextPalette: getComputedStyle(title).color === 'rgb(85, 107, 79)',
+        heroTextPalette: getComputedStyle(title).color === 'rgb(47, 49, 51)',
         heroPanelRemoved: panelStyle.backgroundColor === 'rgba(0, 0, 0, 0)' && panelStyle.borderLeftWidth === '0px' && panelStyle.borderRightWidth === '0px' && panelStyle.boxShadow === 'none' && panelStyle.backdropFilter === 'none',
         editorialCaptions: [...document.querySelectorAll('.editorial figcaption')].map(x=>x.textContent.trim()),
         editorialResponsive: innerWidth <= 640 ? editorial.scrollWidth > editorial.clientWidth && getComputedStyle(editorial).scrollSnapType.includes('mandatory') : getComputedStyle(editorial).gridTemplateColumns.split(' ').length === 3,
@@ -161,14 +163,21 @@ for (const [route, width] of cases) {
         visiblePhone: document.body.innerText.includes('+98 919 253 1804') || document.body.innerText.includes('+989192531804'),
         introBold: parseInt(getComputedStyle(document.querySelector('.intro h2')).fontWeight,10) >= 700,
         introGold: getComputedStyle(document.querySelector('.intro h2')).color === 'rgb(199, 161, 77)',
-        introDividerMatches: getComputedStyle(document.querySelector('.intro h2'),'::after').backgroundColor === getComputedStyle(document.querySelector('.intro h2')).color && getComputedStyle(document.querySelector('.intro h2'),'::after').height === '1px',
+        introDividerRemoved: getComputedStyle(document.querySelector('.intro h2'),'::after').content === 'none',
+        introText: document.querySelector('.intro h2').textContent.trim() === (document.documentElement.lang==='fa' ? 'اعتماد از اولین لمس آغاز می‌شود...' : 'Trust begins with the very first touch...'),
         introRefinedType: parseFloat(getComputedStyle(document.querySelector('.intro h2')).lineHeight) / parseFloat(getComputedStyle(document.querySelector('.intro h2')).fontSize) <= 1.31 && parseFloat(getComputedStyle(document.querySelector('.intro h2')).fontSize) <= 30,
-        introTightSpacing: parseFloat(getComputedStyle(document.querySelector('.intro')).rowGap) <= 14,
+        introTightSpacing: parseFloat(getComputedStyle(document.querySelector('.intro')).rowGap) <= 10,
+        drawerAtMostHalf: drawer.getBoundingClientRect().width <= innerWidth * .5 + 1,
         introJustified: getComputedStyle(document.querySelector('.intro p')).textAlign === 'justify'
       };
     })()`));
     await evalValue(`document.querySelector('[data-menu-toggle]').click()`);
     metrics.menuOpened = await evalValue(`document.querySelector('[data-menu-toggle]').getAttribute('aria-expanded')==='true' && document.querySelector('[data-drawer]').classList.contains('is-open')`);
+    if (route === '/' && width === 320) {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      const drawerShot = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+      fs.writeFileSync('test/screenshots/drawer-320.png', Buffer.from(drawerShot.data, 'base64'));
+    }
     metrics.menuFocusManaged = await evalValue(`document.activeElement===document.querySelector('[data-menu-close]') && document.body.classList.contains('menu-open')`);
     await evalValue(`document.querySelector('[data-menu-backdrop]').click()`);
     metrics.overlayClosedMenu = await evalValue(`document.querySelector('[data-menu-toggle]').getAttribute('aria-expanded')==='false' && !document.body.classList.contains('menu-open')`);
@@ -190,6 +199,6 @@ await reducedLoaded;
 const reducedMotion = await evalValue(`(()=>{const r=document.querySelector('.reveal');const s=getComputedStyle(r);return s.opacity==='1' && (s.transform==='none' || s.transform.includes('matrix(1, 0, 0, 1, 0, 0)'))})()`);
 
 console.log(JSON.stringify({ results, consoleErrors, reducedMotion }, null, 2));
-const failed = results.some((item) => item.h1 !== 1 || item.overflow || item.broken.length || !item.menuAtLogicalStart || item.footerGroups !== 4 || item.footerComputedColumns !== 2 || item.footerRows !== 2 || !item.footerInsideViewport || item.telegramLinks !== 1 || !item.telegramOnlyInFooter || item.unavailableAnchors || item.goldenLabels || !item.newLogo || item.oldLogoActive || item.languageSwitchers !== 1 || !item.languageOutsideDrawer || !item.languageEquivalent || JSON.stringify(item.paletteTokens) !== JSON.stringify(['#556b4f','#c7a14d','#95a597','#f7f4ee','#2f3133']) || !item.logoNoCollision || !item.headerControlsAdjacent || !item.hashedAssets || ((item.route === '/' || item.route === '/en/') && (!item.headerSeparate || !item.heroImageBlurred || !item.heroTextSharp || !item.heroTextPalette || !item.heroPanelRemoved || !item.editorialResponsive || !item.partnershipBeforeFooter || !item.partnershipLinks || !item.whatsappMessages || !item.partnershipCallLabel || !item.footerCallMatches || item.partnershipHasTelegram || item.visiblePhone || !item.introBold || !item.introGold || !item.introDividerMatches || !item.introRefinedType || !item.introTightSpacing || !item.introJustified || !item.menuOpened || !item.menuFocusManaged || !item.overlayClosedMenu || !item.menuClosed || !item.lightboxOpened || !item.lightboxClosed))) || consoleErrors.length || !reducedMotion;
+const failed = results.some((item) => item.h1 !== 1 || item.overflow || item.broken.length || !item.menuAtLogicalStart || item.footerGroups !== 4 || item.footerComputedColumns !== 2 || item.footerRows !== 2 || !item.footerInsideViewport || item.telegramLinks !== 1 || !item.telegramOnlyInFooter || item.unavailableAnchors || item.emailLinks !== 1 || item.goldenLabels || !item.newLogo || item.oldLogoActive || item.languageSwitchers !== 1 || !item.languageOutsideDrawer || !item.languageEquivalent || JSON.stringify(item.paletteTokens) !== JSON.stringify(['#556b4f','#c7a14d','#95a597','#f7f4ee','#2f3133']) || !item.logoNoCollision || !item.headerControlsAdjacent || !item.hashedAssets || ((item.route === '/' || item.route === '/en/') && (!item.headerSeparate || !item.heroImageBlurred || !item.heroTextSharp || !item.heroTextPalette || !item.heroPanelRemoved || !item.editorialResponsive || !item.partnershipBeforeFooter || !item.partnershipLinks || !item.whatsappMessages || !item.partnershipCallLabel || !item.footerCallMatches || item.partnershipHasTelegram || item.visiblePhone || !item.introBold || !item.introGold || !item.introDividerRemoved || !item.introText || !item.introRefinedType || !item.introTightSpacing || !item.drawerAtMostHalf || !item.introJustified || !item.menuOpened || !item.menuFocusManaged || !item.overlayClosedMenu || !item.menuClosed || !item.lightboxOpened || !item.lightboxClosed))) || consoleErrors.length || !reducedMotion;
 page.socket.close();
 if (failed) process.exitCode = 1;
