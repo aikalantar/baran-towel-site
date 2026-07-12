@@ -23,7 +23,7 @@
   Cache-Control: public, max-age=0, must-revalidate
 
 # Versioned brand and browser icons are immutable.
-/styles.bcb4b8838f.css
+/styles.646ee293ad.css
   Cache-Control: public, max-age=31536000, immutable
 /script.62a2e3d69f.js
   Cache-Control: public, max-age=31536000, immutable

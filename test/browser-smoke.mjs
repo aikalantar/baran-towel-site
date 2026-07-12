@@ -94,7 +94,8 @@ for (const [route, width] of cases) {
     languageSwitchers: document.querySelectorAll('.language-switcher').length,
     languageOutsideDrawer: !!document.querySelector('.site-header .header-controls > .language-switcher') && !document.querySelector('.side-drawer .language-switcher, .drawer-nav [lang]'),
     languageHref: document.querySelector('.language-switcher')?.getAttribute('href'),
-    hashedAssets: !!document.querySelector('link[href*="styles.bcb4b8838f.css"]') && !!document.querySelector('script[src*="script.62a2e3d69f.js"]')
+    paletteTokens: ['--olive','--gold','--sage','--paper','--ink'].map(name => getComputedStyle(document.documentElement).getPropertyValue(name).trim().toLowerCase()),
+    hashedAssets: !!document.querySelector('link[href*="styles.646ee293ad.css"]') && !!document.querySelector('script[src*="script.62a2e3d69f.js"]')
   }))()`);
   metrics.languageEquivalent = metrics.languageHref === languageMap.get(metrics.route);
   Object.assign(metrics, await evalValue(`(()=>{
@@ -147,7 +148,7 @@ for (const [route, width] of cases) {
         headerSeparate: header.getBoundingClientRect().bottom <= hero.getBoundingClientRect().top + 1,
         heroImageBlurred: getComputedStyle(image).filter.includes('blur(2px)'),
         heroTextSharp: getComputedStyle(title).filter === 'none',
-        heroTextGrey: getComputedStyle(title).color === 'rgb(89, 94, 91)',
+        heroTextPalette: getComputedStyle(title).color === 'rgb(85, 107, 79)',
         heroPanelRemoved: panelStyle.backgroundColor === 'rgba(0, 0, 0, 0)' && panelStyle.borderLeftWidth === '0px' && panelStyle.borderRightWidth === '0px' && panelStyle.boxShadow === 'none' && panelStyle.backdropFilter === 'none',
         editorialCaptions: [...document.querySelectorAll('.editorial figcaption')].map(x=>x.textContent.trim()),
         editorialResponsive: innerWidth <= 640 ? editorial.scrollWidth > editorial.clientWidth && getComputedStyle(editorial).scrollSnapType.includes('mandatory') : getComputedStyle(editorial).gridTemplateColumns.split(' ').length === 3,
@@ -159,6 +160,10 @@ for (const [route, width] of cases) {
         partnershipHasTelegram: !!partnership.querySelector('a[href*="t.me"]'),
         visiblePhone: document.body.innerText.includes('+98 919 253 1804') || document.body.innerText.includes('+989192531804'),
         introBold: parseInt(getComputedStyle(document.querySelector('.intro h2')).fontWeight,10) >= 700,
+        introGold: getComputedStyle(document.querySelector('.intro h2')).color === 'rgb(199, 161, 77)',
+        introDividerMatches: getComputedStyle(document.querySelector('.intro h2'),'::after').backgroundColor === getComputedStyle(document.querySelector('.intro h2')).color && getComputedStyle(document.querySelector('.intro h2'),'::after').height === '1px',
+        introRefinedType: parseFloat(getComputedStyle(document.querySelector('.intro h2')).lineHeight) / parseFloat(getComputedStyle(document.querySelector('.intro h2')).fontSize) <= 1.31 && parseFloat(getComputedStyle(document.querySelector('.intro h2')).fontSize) <= 30,
+        introTightSpacing: parseFloat(getComputedStyle(document.querySelector('.intro')).rowGap) <= 14,
         introJustified: getComputedStyle(document.querySelector('.intro p')).textAlign === 'justify'
       };
     })()`));
@@ -185,6 +190,6 @@ await reducedLoaded;
 const reducedMotion = await evalValue(`(()=>{const r=document.querySelector('.reveal');const s=getComputedStyle(r);return s.opacity==='1' && (s.transform==='none' || s.transform.includes('matrix(1, 0, 0, 1, 0, 0)'))})()`);
 
 console.log(JSON.stringify({ results, consoleErrors, reducedMotion }, null, 2));
-const failed = results.some((item) => item.h1 !== 1 || item.overflow || item.broken.length || !item.menuAtLogicalStart || item.footerGroups !== 4 || item.footerComputedColumns !== 2 || item.footerRows !== 2 || !item.footerInsideViewport || item.telegramLinks !== 1 || !item.telegramOnlyInFooter || item.unavailableAnchors || item.goldenLabels || !item.newLogo || item.oldLogoActive || item.languageSwitchers !== 1 || !item.languageOutsideDrawer || !item.languageEquivalent || !item.logoNoCollision || !item.headerControlsAdjacent || !item.hashedAssets || ((item.route === '/' || item.route === '/en/') && (!item.headerSeparate || !item.heroImageBlurred || !item.heroTextSharp || !item.heroTextGrey || !item.heroPanelRemoved || !item.editorialResponsive || !item.partnershipBeforeFooter || !item.partnershipLinks || !item.whatsappMessages || !item.partnershipCallLabel || !item.footerCallMatches || item.partnershipHasTelegram || item.visiblePhone || !item.introBold || !item.introJustified || !item.menuOpened || !item.menuFocusManaged || !item.overlayClosedMenu || !item.menuClosed || !item.lightboxOpened || !item.lightboxClosed))) || consoleErrors.length || !reducedMotion;
+const failed = results.some((item) => item.h1 !== 1 || item.overflow || item.broken.length || !item.menuAtLogicalStart || item.footerGroups !== 4 || item.footerComputedColumns !== 2 || item.footerRows !== 2 || !item.footerInsideViewport || item.telegramLinks !== 1 || !item.telegramOnlyInFooter || item.unavailableAnchors || item.goldenLabels || !item.newLogo || item.oldLogoActive || item.languageSwitchers !== 1 || !item.languageOutsideDrawer || !item.languageEquivalent || JSON.stringify(item.paletteTokens) !== JSON.stringify(['#556b4f','#c7a14d','#95a597','#f7f4ee','#2f3133']) || !item.logoNoCollision || !item.headerControlsAdjacent || !item.hashedAssets || ((item.route === '/' || item.route === '/en/') && (!item.headerSeparate || !item.heroImageBlurred || !item.heroTextSharp || !item.heroTextPalette || !item.heroPanelRemoved || !item.editorialResponsive || !item.partnershipBeforeFooter || !item.partnershipLinks || !item.whatsappMessages || !item.partnershipCallLabel || !item.footerCallMatches || item.partnershipHasTelegram || item.visiblePhone || !item.introBold || !item.introGold || !item.introDividerMatches || !item.introRefinedType || !item.introTightSpacing || !item.introJustified || !item.menuOpened || !item.menuFocusManaged || !item.overlayClosedMenu || !item.menuClosed || !item.lightboxOpened || !item.lightboxClosed))) || consoleErrors.length || !reducedMotion;
 page.socket.close();
 if (failed) process.exitCode = 1;
