@@ -36,8 +36,13 @@
     if (trigger.dataset.productName) eventData.product_name = trigger.dataset.productName;
     if (trigger.dataset.channel) eventData.channel = trigger.dataset.channel;
     dataLayer.push(eventData);
-    if (eventName === 'product_inquiry_click' && trigger.dataset.channel === 'whatsapp') {
-      dataLayer.push({ event: 'whatsapp_click' });
+    if (eventName === 'product_inquiry_click') {
+      const channelEvent = trigger.dataset.channel === 'whatsapp'
+        ? 'whatsapp_click'
+        : trigger.dataset.channel === 'bale'
+          ? 'bale_click'
+          : null;
+      if (channelEvent) dataLayer.push({ event: channelEvent });
     }
   });
 

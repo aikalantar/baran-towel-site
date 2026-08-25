@@ -319,6 +319,9 @@ button { font: inherit; }
 .price strong { color: var(--olive); font-size: 1.18rem; }
 .price--inquiry strong { font-size: 1rem; }
 .product-inquiry { margin-top: 24px; }
+.product-actions { margin-top: 24px; }
+.product-actions .product-inquiry { margin-top: 0; }
+.consultation .button-group, .catalog-footer-links > .button-group { margin-top: 0; }
 .catalog-footer-links { margin-block: 20px clamp(56px, 8vw, 104px); border-block: 1px solid var(--line); }
 
 @media (min-width: 901px) {

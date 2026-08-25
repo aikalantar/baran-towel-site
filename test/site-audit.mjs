@@ -78,7 +78,11 @@ if (catalogHtml?.includes('hreflang=') || englishCatalogHtml?.includes('hreflang
 if (!catalogHtml?.includes('۱۶٬۰۰۰٬۰۰۰ تومان') || !catalogHtml?.includes('۱۲٬۰۰۰٬۰۰۰ تومان')) errors.push('/catalog/: confirmed prices are missing');
 if ((catalogHtml?.match(/استعلام قیمت و موجودی/g) || []).length < 4) errors.push('/catalog/: models without confirmed prices must use inquiry copy');
 if (/ضمانت مرجوعی|۲۴ ساعته/.test(catalogHtml || '')) errors.push('/catalog/: unverified return policy must not be published');
-if (/href=["'][^"']*(?:bale|ble\.ir)/i.test(`${bridalHtml || ''}${catalogHtml || ''}`)) errors.push('Bale CTA must remain hidden until a verified URL exists');
+const baleUrl = 'https://ble.ir/baran_towel_bathrobe';
+if (!bridalHtml?.includes(`href="${baleUrl}"`)) errors.push('/bridal-towels/: verified Bale CTA is missing');
+if ((catalogHtml?.match(new RegExp(`href="${baleUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'g')) || []).length < 6) errors.push('/catalog/: each product must offer the verified Bale inquiry channel');
+if (!catalogHtml?.includes('/assets/products/mozhan.webp') || catalogHtml.includes('product-media--pending')) errors.push('/catalog/: confirmed Mozhan image must replace the pending placeholder');
+if (catalogHtml?.includes('رار') || !catalogHtml?.includes('وستا، راد و ایلیا')) errors.push('/catalog/: corrected Rad model name is missing');
 
 const sitemap = fs.readFileSync(path.join(publicDir, 'sitemap.xml'), 'utf8');
 for (const requiredRoute of ['/', '/bridal-towels/', '/catalog/', '/blog/', '/blog/rahnamaye-kharid-hole-luxury/', '/en/', '/en/catalog/', '/en/blog/', '/en/blog/how-to-choose-luxury-towels/']) {
