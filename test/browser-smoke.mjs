@@ -2,9 +2,10 @@ import fs from 'node:fs';
 
 const endpoint = 'http://127.0.0.1:9223';
 const base = 'http://127.0.0.1:4175';
-const screenshots = new Set(['/-1440', '/-320', '/-375', '/-768', '/-1024', '/catalog/-375', '/en/-375', '/en/blog/how-to-choose-luxury-towels/-1024']);
+const screenshots = new Set(['/-1440', '/-320', '/-375', '/-768', '/-1024', '/bridal-towels/-375', '/bridal-towels/-1440', '/catalog/-375', '/en/-375', '/en/blog/how-to-choose-luxury-towels/-1024']);
 const languageMap = new Map([
   ['/', '/en/'], ['/en/', '/'],
+  ['/bridal-towels/', '/en/'],
   ['/catalog/', '/en/catalog/'], ['/en/catalog/', '/catalog/'],
   ['/blog/', '/en/blog/'], ['/en/blog/', '/blog/'],
   ['/blog/rahnamaye-kharid-hole-luxury/', '/en/blog/how-to-choose-luxury-towels/'],
@@ -61,6 +62,7 @@ const evalValue = async (expression) => {
 
 const cases = [
   ['/', 320], ['/', 375], ['/', 768], ['/', 1024], ['/', 1440],
+  ['/bridal-towels/', 375], ['/bridal-towels/', 1440],
   ['/catalog/', 375], ['/catalog/', 1440], ['/blog/', 320],
   ['/blog/rahnamaye-kharid-hole-luxury/', 375], ['/en/', 375],
   ['/en/catalog/', 768], ['/en/blog/', 1024], ['/en/blog/how-to-choose-luxury-towels/', 1024]
@@ -79,6 +81,9 @@ for (const [route, width] of cases) {
     lang: document.documentElement.lang,
     dir: document.documentElement.dir,
     h1: document.querySelectorAll('h1').length,
+    metaDescription: document.querySelector('meta[name="description"]')?.content,
+    canonical: document.querySelector('link[rel="canonical"]')?.href,
+    jsonLdValid: [...document.querySelectorAll('script[type="application/ld+json"]')].every(s=>{try{JSON.parse(s.textContent);return true}catch{return false}}),
     overflow: document.documentElement.scrollWidth > innerWidth + 1,
     broken: [...document.images].filter(i => !i.matches('[data-lightbox-image]') && (!i.complete || !i.naturalWidth)).map(i => i.src),
     title: document.title,
@@ -90,13 +95,15 @@ for (const [route, width] of cases) {
     unavailableAnchors: document.querySelectorAll('.is-unavailable a, a[href="#"]').length,
     emailLinks: document.querySelectorAll('a[href="mailto:hello@luxtowelco.com"]').length,
     goldenLabels: document.querySelectorAll('.eyebrow').length,
-    newLogo: document.querySelectorAll('.site-header img[src="/assets/images/brand/baran-logo.png"][width="1024"][height="1024"]').length === 1,
+    newLogo: document.querySelectorAll('.site-header img[src="/assets/images/brand/baran-logo.c01f592bc1.png"][width="256"][height="256"]').length === 1,
     oldLogoActive: !!document.querySelector('[src*="baran-logo-transparent-v2"], [href*="baran-logo-transparent-v2"]') || document.documentElement.innerHTML.includes('baran-logo-transparent-v2'),
     languageSwitchers: document.querySelectorAll('.language-switcher').length,
     languageOutsideDrawer: !!document.querySelector('.site-header .header-controls > .language-switcher') && !document.querySelector('.side-drawer .language-switcher, .drawer-nav [lang]'),
     languageHref: document.querySelector('.language-switcher')?.getAttribute('href'),
     paletteTokens: ['--olive','--gold','--sage','--paper','--ink'].map(name => getComputedStyle(document.documentElement).getPropertyValue(name).trim().toLowerCase()),
-    hashedAssets: !!document.querySelector('link[href*="styles.d64fc2068c.css"]') && !!document.querySelector('script[src*="script.62a2e3d69f.js"]')
+    hashedAssets: !!document.querySelector('link[href^="/styles."][href$=".css"]') && !!document.querySelector('script[src^="/script."][src$=".js"]'),
+    primaryNavVisible: getComputedStyle(document.querySelector('.primary-nav')).display !== 'none',
+    menuToggleVisible: getComputedStyle(document.querySelector('[data-menu-toggle]')).display !== 'none'
   }))()`);
   metrics.languageEquivalent = metrics.languageHref === languageMap.get(metrics.route);
   Object.assign(metrics, await evalValue(`(()=>{
@@ -109,11 +116,11 @@ for (const [route, width] of cases) {
     return {
       logoWidth: Math.round(logo.width),
       logoNoCollision: !overlaps(logo, controls),
-      headerControlsAdjacent: Math.abs(language.right-menu.left)<=10 || Math.abs(menu.right-language.left)<=10,
+      headerControlsAdjacent: getComputedStyle(document.querySelector('[data-menu-toggle]')).display === 'none' || Math.abs(language.right-menu.left)<=10 || Math.abs(menu.right-language.left)<=10,
       footerInsideViewport: footer.left >= -1 && footer.right <= innerWidth + 1
     };
   })()`));
-  metrics.menuAtLogicalStart = await evalValue(`(()=>{const r=document.querySelector('[data-menu-toggle]').getBoundingClientRect();return document.documentElement.dir==='rtl'?r.left>innerWidth/2:r.right<innerWidth/2})()`);
+  metrics.menuAtLogicalStart = await evalValue(`(()=>{const el=document.querySelector('[data-menu-toggle]');if(getComputedStyle(el).display==='none')return true;const r=el.getBoundingClientRect();return document.documentElement.dir==='rtl'?r.left>innerWidth/2:r.right<innerWidth/2})()`);
   if (screenshots.has(`${route}-${width}`)) {
     const shot = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     const safe = route === '/' ? 'home' : route.replaceAll('/', '-').replace(/^-|-$/g, '');
@@ -189,6 +196,42 @@ for (const [route, width] of cases) {
     await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     metrics.lightboxClosed = await evalValue(`!document.querySelector('[data-lightbox]').open`);
   }
+  if (route === '/bridal-towels/') {
+    Object.assign(metrics, await evalValue(`(()=>({
+      requiredSections: ['.bridal-hero','.feature-grid','.guide-grid','.catalog-callout','.dual-stories','.consultation','.snappay','.faq','.final-cta'].every(s=>document.querySelector(s)),
+      faqCount: document.querySelectorAll('.faq details').length,
+      catalogueLinks: document.querySelectorAll('a[href="/catalog/"]').length,
+      inquiryLinks: [...document.querySelectorAll('[data-inquiry-message]')].every(a=>a.href.startsWith('https://wa.me/989192531804?text=')),
+      pageEvent: window.dataLayer.some(item=>item.event==='bridal_page_view')
+    }))()`));
+    if (width === 375) {
+      await evalValue(`document.querySelector('.faq summary').focus()`);
+      await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: ' ', code: 'Space', windowsVirtualKeyCode: 32 });
+      await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: ' ', code: 'Space', windowsVirtualKeyCode: 32 });
+      metrics.faqKeyboardOpened = await evalValue(`document.querySelector('.faq details').open`);
+      await evalValue(`(()=>{const b=document.querySelector('[data-menu-toggle]');b.focus();b.click()})()`);
+      metrics.bridalMenuOpened = await evalValue(`document.querySelector('[data-drawer]').classList.contains('is-open') && document.activeElement===document.querySelector('[data-menu-close]')`);
+      await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+      metrics.bridalMenuClosed = await evalValue(`!document.querySelector('[data-drawer]').classList.contains('is-open') && document.activeElement===document.querySelector('[data-menu-toggle]')`);
+    }
+  }
+  if (route === '/catalog/') {
+    Object.assign(metrics, await evalValue(`(()=>({
+      productCards: document.querySelectorAll('.product-card').length,
+      productInquiryLinks: [...document.querySelectorAll('.product-inquiry')].every(a=>a.href.startsWith('https://wa.me/989192531804?text=') && a.dataset.productName && a.dataset.channel==='whatsapp'),
+      noProductOfferSchema: ![...document.querySelectorAll('script[type="application/ld+json"]')].some(s=>/\"@(type|type)\"\s*:\s*\"(Product|Offer)\"/.test(s.textContent)),
+      catalogPageEvent: window.dataLayer.some(item=>item.event==='bridal_catalog_view')
+    }))()`));
+    if (width === 375) {
+      await evalValue(`document.querySelector('.product-media button').focus()`);
+      await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: ' ', code: 'Space', windowsVirtualKeyCode: 32 });
+      await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: ' ', code: 'Space', windowsVirtualKeyCode: 32 });
+      metrics.catalogLightboxOpened = await evalValue(`document.querySelector('[data-lightbox]').open`);
+      await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+      metrics.catalogLightboxClosed = await evalValue(`!document.querySelector('[data-lightbox]').open`);
+      metrics.productTracking = await evalValue(`(()=>{const a=document.querySelector('.product-inquiry');a.addEventListener('click',e=>e.preventDefault(),{once:true});a.click();return window.dataLayer.some(item=>item.event==='product_inquiry_click'&&item.product_name==='صنم'&&item.channel==='whatsapp')&&window.dataLayer.some(item=>item.event==='whatsapp_click')})()`);
+    }
+  }
   results.push({ width, ...metrics });
 }
 
@@ -199,6 +242,6 @@ await reducedLoaded;
 const reducedMotion = await evalValue(`(()=>{const r=document.querySelector('.reveal');const s=getComputedStyle(r);return s.opacity==='1' && (s.transform==='none' || s.transform.includes('matrix(1, 0, 0, 1, 0, 0)'))})()`);
 
 console.log(JSON.stringify({ results, consoleErrors, reducedMotion }, null, 2));
-const failed = results.some((item) => item.h1 !== 1 || item.overflow || item.broken.length || !item.menuAtLogicalStart || item.footerGroups !== 4 || item.footerComputedColumns !== 2 || item.footerRows !== 2 || !item.footerInsideViewport || item.telegramLinks !== 1 || !item.telegramOnlyInFooter || item.unavailableAnchors || item.emailLinks !== 1 || item.goldenLabels || !item.newLogo || item.oldLogoActive || item.languageSwitchers !== 1 || !item.languageOutsideDrawer || !item.languageEquivalent || JSON.stringify(item.paletteTokens) !== JSON.stringify(['#556b4f','#c7a14d','#95a597','#f7f4ee','#2f3133']) || !item.logoNoCollision || !item.headerControlsAdjacent || !item.hashedAssets || ((item.route === '/' || item.route === '/en/') && (!item.headerSeparate || !item.heroImageBlurred || !item.heroTextSharp || !item.heroTextPalette || !item.heroPanelRemoved || !item.editorialResponsive || !item.partnershipBeforeFooter || !item.partnershipLinks || !item.whatsappMessages || !item.partnershipCallLabel || !item.footerCallMatches || item.partnershipHasTelegram || item.visiblePhone || !item.introBold || !item.introGold || !item.introDividerRemoved || !item.introText || !item.introRefinedType || !item.introTightSpacing || !item.drawerAtMostHalf || !item.introJustified || !item.menuOpened || !item.menuFocusManaged || !item.overlayClosedMenu || !item.menuClosed || !item.lightboxOpened || !item.lightboxClosed))) || consoleErrors.length || !reducedMotion;
+const failed = results.some((item) => item.h1 !== 1 || !item.metaDescription || !item.canonical || !item.jsonLdValid || item.overflow || item.broken.length || !item.menuAtLogicalStart || (item.width > 900 ? !item.primaryNavVisible || item.menuToggleVisible : item.primaryNavVisible || !item.menuToggleVisible) || item.footerGroups !== 4 || item.footerComputedColumns !== 2 || item.footerRows !== 2 || !item.footerInsideViewport || item.telegramLinks !== 1 || !item.telegramOnlyInFooter || item.unavailableAnchors || item.emailLinks !== 1 || item.goldenLabels || !item.newLogo || item.oldLogoActive || item.languageSwitchers !== 1 || !item.languageOutsideDrawer || !item.languageEquivalent || JSON.stringify(item.paletteTokens) !== JSON.stringify(['#556b4f','#c7a14d','#95a597','#f7f4ee','#2f3133']) || !item.logoNoCollision || !item.headerControlsAdjacent || !item.hashedAssets || (item.route === '/bridal-towels/' && (!item.requiredSections || item.faqCount !== 7 || item.catalogueLinks < 2 || !item.inquiryLinks || !item.pageEvent || (item.width === 375 && (!item.faqKeyboardOpened || !item.bridalMenuOpened || !item.bridalMenuClosed)))) || (item.route === '/catalog/' && (item.productCards !== 6 || !item.productInquiryLinks || !item.noProductOfferSchema || !item.catalogPageEvent || (item.width === 375 && (!item.catalogLightboxOpened || !item.catalogLightboxClosed || !item.productTracking)))) || ((item.route === '/' || item.route === '/en/') && (!item.headerSeparate || !item.heroImageBlurred || !item.heroTextSharp || !item.heroTextPalette || !item.heroPanelRemoved || !item.editorialResponsive || !item.partnershipBeforeFooter || !item.partnershipLinks || !item.whatsappMessages || !item.partnershipCallLabel || !item.footerCallMatches || item.partnershipHasTelegram || item.visiblePhone || !item.introBold || !item.introGold || !item.introDividerRemoved || !item.introText || !item.introRefinedType || !item.introTightSpacing || !item.drawerAtMostHalf || !item.introJustified || !item.menuOpened || !item.menuFocusManaged || !item.overlayClosedMenu || !item.menuClosed || !item.lightboxOpened || !item.lightboxClosed))) || consoleErrors.length || !reducedMotion;
 page.socket.close();
 if (failed) process.exitCode = 1;
