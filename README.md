@@ -5,10 +5,13 @@ Static, bilingual website for Baran, built with semantic HTML, shared CSS and mi
 ## Canonical routes
 
 - `/` and `/en/`
+- `/bridal-towels/` (Persian bridal towel content hub)
 - `/catalog/` and `/en/catalog/`
 - `/blog/` and `/en/blog/`
 - `/blog/rahnamaye-kharid-hole-luxury/`
 - `/en/blog/how-to-choose-luxury-towels/`
+
+The Persian `/catalog/` is the product-led bridal towel catalogue. The English catalogue remains the general image catalogue, so these two routes intentionally do not use `hreflang` alternates.
 
 ## Cloudflare Workers Static Assets
 
@@ -31,4 +34,4 @@ Pushes to `main` are deployed through the connected Cloudflare Git integration. 
 npx wrangler deploy
 ```
 
-Run `node test/browser-smoke.mjs` while the local static server and headless Chrome DevTools endpoint used by the script are active.
+With the local static server running on port `4175`, run `node test/site-audit.mjs`. For responsive layout and interaction coverage, also run `node test/browser-smoke.mjs` while headless Chrome DevTools is available on port `9223`.

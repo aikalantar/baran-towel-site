@@ -6,6 +6,41 @@
   const closeButton = document.querySelector('[data-menu-close]');
   let menuReturnFocus = null;
 
+  const WHATSAPP_NUMBER = '989192531804';
+  const dataLayer = window.dataLayer = window.dataLayer || [];
+  const allowedAnalyticsEvents = new Set([
+    'bridal_page_view',
+    'bridal_catalog_view',
+    'product_inquiry_click',
+    'whatsapp_click',
+    'bale_click',
+    'snappay_inquiry_click',
+    'bridal_article_cta_click'
+  ]);
+  const pageEvent = body.dataset.pageEvent;
+
+  if (allowedAnalyticsEvents.has(pageEvent)) dataLayer.push({ event: pageEvent });
+
+  document.querySelectorAll('[data-inquiry-message]').forEach((link) => {
+    const message = link.dataset.inquiryMessage;
+    if (!message) return;
+    link.href = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+  });
+
+  document.addEventListener('click', (event) => {
+    const trigger = event.target.closest('[data-analytics-event]');
+    if (!trigger) return;
+    const eventName = trigger.dataset.analyticsEvent;
+    if (!allowedAnalyticsEvents.has(eventName)) return;
+    const eventData = { event: eventName };
+    if (trigger.dataset.productName) eventData.product_name = trigger.dataset.productName;
+    if (trigger.dataset.channel) eventData.channel = trigger.dataset.channel;
+    dataLayer.push(eventData);
+    if (eventName === 'product_inquiry_click' && trigger.dataset.channel === 'whatsapp') {
+      dataLayer.push({ event: 'whatsapp_click' });
+    }
+  });
+
   const focusable = (root) =>
     [...root.querySelectorAll('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])')];
 
