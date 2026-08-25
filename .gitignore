@@ -3,31 +3,10 @@ ehthumbs.db
 Desktop.ini
 .DS_Store
 *.log
-
-# Local environment variables and secrets
 .env
 .env.*
-!.env.example
-!.env.sample
-.dev.vars
-.dev.vars.*
-*.pem
-*.key
-*.p12
-*.pfx
-
-# Cloudflare local state
 .wrangler/
 .cloudflare/
-
-# Dependencies and generated output
 node_modules/
 dist/
 build/
-coverage/
-.cache/
-.tmp/
-
-# Editor metadata
-.idea/
-.vscode/
