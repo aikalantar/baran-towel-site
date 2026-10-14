@@ -1,11 +1,22 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "baran-towel-site",
+  "main": "src/cms-worker.js",
   "compatibility_date": "2026-07-09",
   "observability": {
-    "enabled": true
+    "enabled": true,
   },
   "assets": {
-    "directory": "./public"
-  }
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/cms/*"],
+  },
+  "vars": {
+    "CMS_REPOSITORY": "aikalantar/baran-towel-site",
+    "CMS_BRANCH": "main",
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "CMS_GUARD", "class_name": "CMSLoginGuard" }],
+  },
+  "migrations": [{ "tag": "cms-v1", "new_sqlite_classes": ["CMSLoginGuard"] }],
 }

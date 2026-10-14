@@ -10,7 +10,7 @@ const walk = (directory) => fs.readdirSync(directory, { withFileTypes: true }).f
   return entry.isDirectory() ? walk(fullPath) : [fullPath];
 });
 
-const htmlFiles = walk(publicDir).filter((file) => file.endsWith('.html'));
+const htmlFiles = walk(publicDir).filter((file) => file.endsWith('.html') && !file.startsWith(path.join(publicDir, 'admin') + path.sep));
 const htmlByRoute = new Map(htmlFiles.map((file) => {
   const relative = path.relative(publicDir, file).replaceAll('\\', '/');
   const route = relative === 'index.html' ? '/' : `/${relative.replace(/index\.html$/, '')}`;

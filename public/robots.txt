@@ -1,4 +1,6 @@
 User-agent: *
 Allow: /
+Disallow: /admin/
+Disallow: /api/cms/
 
 Sitemap: https://luxtowelco.com/sitemap.xml

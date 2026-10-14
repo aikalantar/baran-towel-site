@@ -1,0 +1,23 @@
+{
+  "name": "luxtowelco",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/cms-local.mjs",
+    "dev:cloudflare": "wrangler dev --port 4175",
+    "cms:setup": "node scripts/cms-setup.mjs",
+    "test": "node --test test/cms.test.mjs",
+    "test:browser": "node test/cms-browser.mjs",
+    "test:runtime": "npm run deploy:check && node test/cms-runtime.mjs",
+    "deploy:check": "wrangler deploy --dry-run --outdir .wrangler/dry-run"
+  },
+  "dependencies": {
+    "linkedom": "^0.18.12"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "miniflare": "5.20261012.0-beta",
+    "wrangler": "^4.42.0"
+  }
+}

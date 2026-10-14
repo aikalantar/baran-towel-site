@@ -11,3 +11,8 @@ node_modules/
 dist/
 build/
 test/screenshots/
+.dev.vars
+.dev.vars.*
+.cms-local/
+playwright-report/
+test-results/
