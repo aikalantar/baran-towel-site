@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "baran-towel-site",
+  "account_id": "4f0b7adeb50009560b1222d95529a824",
   "main": "src/cms-worker.js",
   "compatibility_date": "2026-07-09",
   "observability": {

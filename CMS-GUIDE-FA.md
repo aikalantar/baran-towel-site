@@ -24,5 +24,6 @@
 - حالت محلی فقط از همین دستگاه قابل دسترسی است. دکمه «ذخیره در پروژه» فایل‌ها را تغییر می‌دهد؛ انتشار نهایی با `git add <files>`، `git commit -m "content: update site"` و `git push origin main` انجام می‌شود.
 - برای آنلاین: یک GitHub fine-grained token، محدود به همین مخزن و با `Contents: Read and write` بسازید. تنظیم حساب و secrets: `npm run cms:setup -- --deploy`؛ رمز و token در ورودی مخفی وارد می‌شوند. برای حساب دوم یا تغییر رمز دوباره همین راه‌انداز را اجرا کنید.
 - Secrets لازم در Cloudflare: `CMS_USERS` (فهرست حساب‌ها با hash رمز)، `CMS_SESSION_SECRET` و `CMS_GITHUB_TOKEN`. راه‌انداز آنها را در `.cms-local/secrets.json` و `.dev.vars` محلی و خارج از Git نگه می‌دارد. از hashها هم مثل رمز محافظت کنید.
+- حساب Cloudflare هدف در `wrangler.jsonc` مشخص شده است. ورود CLI باید به همان حساب میزبان سایت دسترسی داشته باشد؛ حساب دیگری برای فعال‌سازی secrets کافی نیست.
 - `wrangler.jsonc` انتشار سایت را حفظ می‌کند و API را به Worker می‌افزاید. مهاجرت `cms-v1`، Durable Object محدودسازی ورود را می‌سازد. ورود بدون secrets و binding لازم بسته است. Cookie نشست `HttpOnly`، `Secure` و ۸ساعته است.
 - بررسی قبل از push: `npm test`، `npm run test:browser` و `npm run test:runtime` (همراه با بررسی بسته انتشار). سپس تغییرات بررسی‌شده را commit و push کنید. token منقضی‌شده را با راه‌انداز یا Cloudflare تعویض کنید؛ تغییر رمز یک کاربر نشست‌های قبلی همان کاربر را باطل می‌کند.
