@@ -7,6 +7,23 @@ import { githubSimulation } from "./github-simulation.mjs";
 import { readLocalSecrets } from "../scripts/local-secrets.mjs";
 import { redactRecord } from "../scripts/audit-redact.mjs";
 import { passwordHash, login, session, bytes64 } from "../src/auth.js";
+import { latestDeployment } from "../scripts/release-preflight.mjs";
+
+test("rollback baseline follows created_on rather than Wrangler deployment array order",()=>{
+  const older = {created_on:"2026-08-01T10:00:00.000Z",versions:[{version_id:"11111111-1111-4111-8111-111111111111",percentage:100}]};
+  const current = {created_on:"2026-10-16T10:00:00.000Z",versions:[{version_id:"22222222-2222-4222-8222-222222222222",percentage:100}]};
+  const invalid = {created_on:"invalid",versions:older.versions};
+  const oldestFirst = [older,invalid,current];
+  assert.equal(latestDeployment(oldestFirst),current);
+  assert.equal(latestDeployment([current,older]),current);
+  assert.equal(latestDeployment({deployments:oldestFirst}),current);
+  assert.deepEqual(oldestFirst,[older,invalid,current],"Selection must not reorder the CLI evidence");
+  assert.equal(latestDeployment({deployments:"invalid"}),null);
+  assert.equal(latestDeployment([invalid,{},null]),null);
+  // A current split deployment must not fall back to an older single version.
+  const split = {created_on:"2026-10-17T10:00:00.000Z",versions:[{version_id:"33333333-3333-4333-8333-333333333333",percentage:50},{version_id:"22222222-2222-4222-8222-222222222222",percentage:50}]};
+  assert.equal(latestDeployment([older,split,current]),split);
+});
 
 test("published text cannot create scripts, event handlers or style breakouts", async()=>{
   const {repo,state} = await githubSimulation(), file = await repo.read("public/index.html"), model = builderPage(file.content,file.sha).model;

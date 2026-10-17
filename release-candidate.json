@@ -31,6 +31,7 @@
     "test/builder-publish.test.mjs",
     "test/builder.test.mjs",
     "test/cms-setup.test.mjs",
+    "test/cms.test.mjs",
     "test/fixtures/release-canary.json",
     "test/github-simulation.mjs",
     "test/release-browser.mjs",

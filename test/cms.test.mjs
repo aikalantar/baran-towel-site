@@ -288,6 +288,8 @@ test("catalog operations synchronize quick navigation and ItemList schema", () =
   );
 });
 test("a new model can have its own specs, price and image before publication", () => {
+  const originalImage = parseHTML(catalog).document
+    .querySelector("#sanam img").getAttribute("src");
   const fields = describePage(catalog, "public/catalog/index.html", "r").fields;
   const color = fields.find(
     (f) => f.model === "sanam" && f.label === "مشخصه: رنگ",
@@ -322,7 +324,7 @@ test("a new model can have its own specs, price and image before publication", (
   );
   assert.equal(
     document.querySelector("#sanam img").getAttribute("src"),
-    "/assets/products/sanam.webp",
+    originalImage,
   );
 });
 test("new articles escape untrusted HTML and appear in the existing blog layout", () => {

@@ -2,9 +2,19 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { pathToFileURL } from "node:url";
 import { readLocalSecrets } from "./local-secrets.mjs";
 import { redactRecord, writeAuditReport } from "./audit-redact.mjs";
 
+// Wrangler does not guarantee deployment-list order. Never use an old version
+// as the current rollback baseline merely because it is the first array entry.
+export function latestDeployment(data) {
+  const list = Array.isArray(data) ? data : Array.isArray(data?.deployments) ? data.deployments : [];
+  return list.filter(entry => typeof entry?.created_on === "string" && Number.isFinite(Date.parse(entry.created_on)))
+    .sort((a,b) => Date.parse(b.created_on) - Date.parse(a.created_on))[0] || null;
+}
+
+export async function runPreflight(argv = process.argv.slice(2)) {
 const exec = promisify(execFile), root = process.cwd(), directory = path.resolve(".cms-local/preflight");
 await fs.mkdir(directory,{recursive:true});
 const config = JSON.parse((await fs.readFile("wrangler.jsonc","utf8")).replace(/^\s*\/\/.*$/gm,"").replace(/,\s*([}\]])/g,"$1"));
@@ -39,7 +49,7 @@ report.local.stagedPrivatePathsAbsent = !stagedNames.some(f=>/(?:^|\/)(?:\.cms-l
 const staged = (await exec("git",["diff","--cached","--no-ext-diff"],{maxBuffer:12*1024*1024})).stdout;
 report.local.stagedActualCredentialsAbsent = !credentials.values.some(value=>value.length>=8 && staged.includes(value));
 
-if (process.argv.includes("--verify-remote")) {
+if (argv.includes("--verify-remote")) {
   report.remote.checked = true;
   const token = credentials.config.CMS_GITHUB_TOKEN;
   const gh = async endpoint => {
@@ -74,8 +84,7 @@ if (process.argv.includes("--verify-remote")) {
     authenticated:who.ok,configuredAccountAccessible:who.ok && JSON.stringify(who.data).includes(config.account_id),workerDeploymentsReadable:deploymentList.ok,
     requiredSecretNamesPresent:secretList.ok && ["CMS_USERS","CMS_SESSION_SECRET","CMS_GITHUB_TOKEN"].every(name=>bindings.includes(name)),
   };
-  const list = Array.isArray(deploymentList.data) ? deploymentList.data : deploymentList.data?.deployments || [];
-  const latest = list[0];
+  const latest = latestDeployment(deploymentList.data);
   if (latest?.versions?.length === 1 && latest.versions[0].percentage === 100 && /^[a-f0-9-]{36}$/.test(latest.versions[0].version_id || "")) references.workerVersion = latest.versions[0].version_id;
   report.remote.cloudflare.singleVersionRollbackReferenceSaved = !!references.workerVersion;
   try {
@@ -86,3 +95,6 @@ if (process.argv.includes("--verify-remote")) {
 if (report.remote.checked) await fs.writeFile(path.join(directory,"references.json"),JSON.stringify(references,null,2)+"\n",{mode:0o600});
 await writeAuditReport(path.join(directory,report.remote.checked?"environment-report.json":"staging-report.json"),report);
 console.log(JSON.stringify(report));
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) await runPreflight();
