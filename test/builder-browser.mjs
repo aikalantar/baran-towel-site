@@ -30,6 +30,9 @@ const layoutOf = async id => (await current()).history.present.elements.find(e =
 try {
   await page.goto(origin + "/admin/builder/");
   await frame().locator("#hero-title").waitFor();
+  const originalHeroText = await frame().locator("#hero-title").innerText();
+  const originalPromoSource = await frame().locator(".bridal-promo-home img").getAttribute("src");
+  assert.ok(originalPromoSource, "The real homepage must provide the initial image source");
   await frame().locator("#hero-title").click();
   const hero = await idOfSelection();
   await page.locator("#text").fill("عنوان بصری آزمایشی باران");
@@ -127,9 +130,9 @@ try {
   const mixed = await current(), operations = mixed.history.past.length;
   for (let i = 0; i < operations; i++) await page.locator("#undo").click();
   await saved();
-  assert.equal(await frame().locator("#hero-title").innerText(), "باران؛ فراتر از حوله");
+  assert.equal(await frame().locator("#hero-title").innerText(), originalHeroText);
   assert.equal(await frame().locator("[data-builder-added]").count(), 0);
-  assert.equal(await frame().locator(".bridal-promo-home img").getAttribute("src"), "/assets/products/sanam.webp");
+  assert.equal(await frame().locator(".bridal-promo-home img").getAttribute("src"), originalPromoSource);
   for (let i = 0; i < operations; i++) await page.locator("#redo").click();
   await saved();
   assert.deepEqual((await current()).history.present, mixed.history.present); count++;
@@ -155,7 +158,7 @@ try {
   assert.equal((await current()).history.present.base.revision, "obsolete-fixture");
   await page.getByRole("button", { name: "شروع پیش‌نویس تازه از صفحه فعلی" }).click();
   await frame().locator("#hero-title").waitFor();
-  assert.equal(await frame().locator("#hero-title").innerText(), "باران؛ فراتر از حوله"); count++;
+  assert.equal(await frame().locator("#hero-title").innerText(), originalHeroText); count++;
 
   // Access gate and expired session do not expose a frame or editing controls.
   const denied = await context.newPage();
