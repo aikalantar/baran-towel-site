@@ -1,7 +1,8 @@
 import fs from 'node:fs';
+import { redactRecord } from '../scripts/audit-redact.mjs';
 
-const endpoint = 'http://127.0.0.1:9223';
-const base = 'http://127.0.0.1:4175';
+const endpoint = process.env.BROWSER_SMOKE_CDP_URL || 'http://127.0.0.1:9223';
+const base = process.env.SITE_AUDIT_BASE_URL || 'http://127.0.0.1:4175';
 const screenshots = new Set(['/-1440', '/-320', '/-375', '/-768', '/-1024', '/bridal-towels/-375', '/bridal-towels/-1440', '/catalog/-375', '/en/-375', '/en/blog/how-to-choose-luxury-towels/-1024']);
 const languageMap = new Map([
   ['/', '/en/'], ['/en/', '/'],
@@ -244,7 +245,7 @@ await page.send('Page.navigate', { url: `${base}/` });
 await reducedLoaded;
 const reducedMotion = await evalValue(`(()=>{const r=document.querySelector('.reveal');const s=getComputedStyle(r);return s.opacity==='1' && (s.transform==='none' || s.transform.includes('matrix(1, 0, 0, 1, 0, 0)'))})()`);
 
-console.log(JSON.stringify({ results, consoleErrors, reducedMotion }, null, 2));
+console.log(JSON.stringify(redactRecord({ results, consoleErrors, reducedMotion }), null, 2));
 const failed = results.some((item) => item.h1 !== 1 || !item.metaDescription || !item.canonical || !item.jsonLdValid || item.overflow || item.broken.length || !item.menuAtLogicalStart || (item.width > 900 ? !item.primaryNavVisible || item.menuToggleVisible : item.primaryNavVisible || !item.menuToggleVisible) || item.footerGroups !== 4 || item.footerComputedColumns !== 2 || item.footerRows !== 2 || !item.footerInsideViewport || item.telegramLinks !== 1 || !item.telegramOnlyInFooter || item.unavailableAnchors || item.emailLinks !== 1 || item.goldenLabels || !item.newLogo || item.oldLogoActive || item.languageSwitchers !== 1 || !item.languageOutsideDrawer || !item.languageEquivalent || JSON.stringify(item.paletteTokens) !== JSON.stringify(['#556b4f','#c7a14d','#95a597','#f7f4ee','#2f3133']) || !item.logoNoCollision || !item.headerControlsAdjacent || !item.hashedAssets || (item.route === '/bridal-towels/' && (!item.requiredSections || item.faqCount !== 7 || item.catalogueLinks < 2 || !item.inquiryLinks || !item.baleLinks || !item.pageEvent || (item.width === 375 && (!item.faqKeyboardOpened || !item.bridalMenuOpened || !item.bridalMenuClosed)))) || (item.route === '/catalog/' && (item.productCards !== 6 || !item.productInquiryLinks || !item.mozhanImage || !item.noProductOfferSchema || !item.catalogPageEvent || (item.width === 375 && (!item.catalogLightboxOpened || !item.catalogLightboxClosed || !item.productTracking || !item.baleTracking)))) || ((item.route === '/' || item.route === '/en/') && (!item.headerSeparate || !item.heroImageBlurred || !item.heroTextSharp || !item.heroTextPalette || !item.heroPanelRemoved || !item.editorialResponsive || !item.partnershipBeforeFooter || !item.partnershipLinks || !item.whatsappMessages || !item.partnershipCallLabel || !item.footerCallMatches || item.partnershipHasTelegram || item.visiblePhone || !item.introBold || !item.introGold || !item.introDividerRemoved || !item.introText || !item.introRefinedType || !item.introTightSpacing || !item.drawerAtMostHalf || !item.introJustified || !item.menuOpened || !item.menuFocusManaged || !item.overlayClosedMenu || !item.menuClosed || !item.lightboxOpened || !item.lightboxClosed))) || consoleErrors.length || !reducedMotion;
 page.socket.close();
 if (failed) process.exitCode = 1;

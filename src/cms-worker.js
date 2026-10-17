@@ -19,6 +19,7 @@ import {
   digest,
 } from "./auth.js";
 import { GitHubRepository } from "./github.js";
+import { builderPage, publishBuilder } from "./builder.js";
 export { CMSLoginGuard } from "./auth.js";
 
 const headers = {
@@ -144,6 +145,24 @@ export async function handleCMS(request, env, options = {}) {
       : await session(request, env);
     if (!user) throw new CMSFailure("برای ادامه وارد پنل شوید.", 401);
     const repo = options.repo || new GitHubRepository(env);
+    if (endpoint === "/builder" && request.method === "GET") {
+      if (!["admin", "editor"].includes(user.role))
+        throw new CMSFailure("دسترسی ویرایش ندارید.", 403);
+      const path = pagePath(url.searchParams.get("path") || "public/index.html");
+      const current = await repo.read(path);
+      const ref = url.searchParams.get("ref");
+      if (ref && !/^[a-f0-9]{40}$/.test(ref)) throw new CMSFailure("نسخه بازگردانی معتبر نیست.");
+      const file = ref ? await repo.read(path,ref) : current;
+      const page = builderPage(file.content,current.sha,path);
+      if (ref) page.model.base.restoreCommit = ref;
+      return json(page);
+    }
+    if (endpoint === "/builder/publish" && request.method === "POST") {
+      if (user.role !== "admin") throw new CMSFailure("انتشار فقط برای مدیر مجاز است؛ پیش‌نویس را برای مدیر خروجی بگیرید.",403);
+      return json(await publishBuilder(repo,await readBody(request),user,localMode));
+    }
+    if (endpoint === "/builder/status" && request.method === "GET")
+      return json(await repo.publicationStatus(url.searchParams.get("sha")));
     if (endpoint === "/library" && request.method === "GET") {
       const head = await repo.head();
       const tree = await repo.tree(head);

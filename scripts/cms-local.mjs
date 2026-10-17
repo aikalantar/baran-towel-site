@@ -89,8 +89,10 @@ export class LocalRepository {
       throw new CMSFailure("فایل پیدا نشد.", 404);
     }
   }
+  async readBytes(relative) { return new Uint8Array(await fs.readFile(this.file(relative))); }
+  async publicationStatus() { return { commit:"local", deployment:"not_applicable", evidence:null }; }
   async commit(base, changes) {
-    if (this.busy || (await this.head()) !== base)
+    if (this.busy)
       throw new CMSFailure(
         "فایل‌ها تغییر کرده‌اند؛ دوباره بارگذاری کنید.",
         409,
@@ -98,6 +100,7 @@ export class LocalRepository {
     this.busy = true;
     const backups = [];
     try {
+      if ((await this.head()) !== base) throw new CMSFailure("فایل‌ها تغییر کرده‌اند؛ دوباره بارگذاری کنید.",409);
       for (const change of changes) {
         const target = this.file(change.path);
         const existing = await fs.readFile(target).catch(() => null);

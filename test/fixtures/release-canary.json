@@ -1,0 +1,7 @@
+{
+  "path": "public/index.html",
+  "anchor": "section-2",
+  "tag": "p",
+  "suffix": " (آزمون انتشار کنترل‌شده)",
+  "rollback": "Restore the saved original paragraph on the latest verified base, or revert the isolated canary commit without forcing the branch."
+}

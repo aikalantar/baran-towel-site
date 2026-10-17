@@ -79,6 +79,34 @@ export class GitHubRepository {
     );
     return { content: new TextDecoder().decode(bytes), sha: file.sha };
   }
+  async readBytes(path, ref) {
+    let file = await this.call(`contents/${path}?ref=${encodeURIComponent(ref || this.branch)}`);
+    if ((!file.content || file.encoding !== "base64") && /^[a-f0-9]{40}$/.test(file.sha || "")) file = await this.call(`git/blobs/${file.sha}`);
+    if (!file.content || file.encoding !== "base64") throw new CMSFailure("تصویر قابل خواندن نیست.");
+    return Uint8Array.from(atob(file.content.replace(/\s/g,"")), c => c.charCodeAt(0));
+  }
+  async publicationStatus(sha) {
+    if (!/^[a-f0-9]{40}$/.test(sha)) throw new CMSFailure("شناسه انتشار معتبر نیست.");
+    // A generic successful build check is not proof of a production deployment.
+    const result = { commit:"unknown", deployment:"unknown", evidence:null };
+    try {
+      const commit = await this.call(`git/commits/${sha}`);
+      if (commit.sha !== sha) return result;
+      result.commit = "committed";
+      if ((await this.head()) !== sha) return {...result,deployment:"superseded"};
+      const trusted = actor => actor?.type === "Bot" && ["cloudflare-workers-and-pages[bot]","cloudflare-pages[bot]"].includes(actor.login);
+      const deployments = await this.call("deployments?per_page=100");
+      const production = deployments.find(d => d.production_environment === true && trusted(d.creator));
+      if (!production || production.sha !== sha) return result;
+      const statuses = await this.call(`deployments/${production.id}/statuses?per_page=1`);
+      const latest = statuses[0];
+      if (!latest || !trusted(latest.creator)) return result;
+      result.deployment = ["success","failure","error","inactive","queued","pending","in_progress"].includes(latest.state) ? latest.state : "unknown";
+      result.evidence = "github-cloudflare-production-deployment";
+      if (/^https:\/\//.test(latest.log_url || "")) result.url = latest.log_url;
+    } catch { result.deployment = "unknown"; }
+    return result;
+  }
   async commit(base, changes, message) {
     if ((await this.head()) !== base)
       throw new CMSFailure(

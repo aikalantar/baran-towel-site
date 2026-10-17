@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { redactText } from '../scripts/audit-redact.mjs';
 
 const publicDir = path.resolve('public');
 const baseUrl = process.env.SITE_AUDIT_BASE_URL || 'http://127.0.0.1:4175';
@@ -108,7 +109,7 @@ for (const [route, expected] of expectedStatuses) {
 }
 
 if (errors.length) {
-  console.error(errors.join('\n'));
+  console.error(redactText(errors.join('\n')));
   process.exitCode = 1;
 } else {
   console.log(JSON.stringify({ htmlFiles: htmlFiles.length, checkedRoutes: expectedStatuses.size, status: 'passed' }));
