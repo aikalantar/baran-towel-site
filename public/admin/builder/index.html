@@ -7,6 +7,7 @@
   <title>صفحه‌ساز بصری باران</title>
   <link rel="icon" href="/favicon-v2.ico">
   <link rel="stylesheet" href="/admin/builder/builder.css">
+  <link rel="stylesheet" href="/admin/builder/pro.css">
   <script type="module" src="/admin/builder/builder.js"></script>
 </head>
 <body>
@@ -15,7 +16,7 @@
     <header class="toolbar">
       <a class="brand" href="/admin/">باران <small>صفحه‌ساز</small></a>
       <div class="tools"><button id="undo" title="Ctrl+Z">↶ واگرد</button><button id="redo" title="Ctrl+Y">↷ بازانجام</button></div>
-      <div class="tools"><button data-device="desktop" aria-pressed="true">دسکتاپ</button><button data-device="mobile" aria-pressed="false">موبایل</button><button id="preview" aria-pressed="false">پیش‌نمایش</button></div>
+      <div class="tools"><button data-device="desktop" aria-pressed="true">دسکتاپ</button><button data-device="tablet" aria-pressed="false">تبلت</button><button data-device="mobile" aria-pressed="false">موبایل</button><button id="preview" aria-pressed="false">پیش‌نمایش</button><button id="public-preview">نمایش خروجی</button></div>
       <div class="tools"><button id="save">ذخیره پیش‌نویس</button><button id="publish">ثبت تغییرات</button><a href="/admin/">خروج به مدیریت</a></div>
     </header>
     <div class="workspace">
@@ -25,6 +26,7 @@
         <div id="publication-status" role="status" aria-live="polite"></div><button id="check-publication" hidden>بررسی وضعیت استقرار</button><button id="continue-editing" hidden>شروع ویرایش نسخه ثبت‌شده</button>
         <p class="muted">تا پیش از تأیید ثبت، تغییرات فقط پیش‌نویس این مرورگر هستند.</p>
         <p id="save-status" role="status" aria-live="polite"></p>
+        <section id="block-library"><h2>بلوک‌های آماده</h2><label>جست‌وجوی بلوک<input id="block-search" type="search" placeholder="مثلاً گالری یا دو ستون"></label><button id="new-section">+ بخش مستقل در صفحه</button><div id="block-list"></div><p class="muted">برای درج کلیک کنید یا بلوک را روی بخش مقصد بکشید. رنگ و قلم از سایت شما می‌آیند.</p></section>
         <section><h2>افزودن عنصر</h2><div class="add-grid"><button data-add="text">+ متن</button><button data-add="heading">+ عنوان</button><button data-add="image">+ تصویر</button><button data-add="button">+ دکمه</button></div>
           <label>بخش مقصد<select id="anchor"></select></label>
         </section>
@@ -32,26 +34,30 @@
           <h2 id="selection-label">عنصر انتخاب‌شده</h2>
           <p class="muted" id="element-id"></p>
           <label id="text-group">متن<textarea id="text" rows="4" maxlength="12000"></textarea></label>
+          <div id="rich-tools" class="tools"><button id="rich-bold">پررنگ</button><button id="rich-italic">مورب</button><button id="rich-underline">زیرخط</button></div>
           <div id="image-group" hidden><label>تصویر کتابخانه<select id="image-library"></select></label><label>توضیح تصویر<input id="alt" maxlength="2000"></label><label class="upload">انتخاب تصویر از دستگاه<input id="upload" type="file" accept="image/png,image/jpeg,image/webp"></label></div>
           <label id="link-group" hidden>آدرس دکمه<input id="href" dir="ltr" maxlength="2000"></label>
-          <h3>موقعیت و ابعاد — درصدِ بخش</h3>
-          <p class="muted">برای عنصر اصلی، X و Y جابه‌جایی از جای اولیه است. تنظیم موبایل مستقل است.</p>
+          <h3>موقعیت و ابعاد</h3>
+          <p class="muted">X/Y درصدِ ظرف است؛ برای عنصر اصلی جابه‌جایی از جای اولیه. واحد ابعاد قابل انتخاب است و تنظیم‌ها برای اندازهٔ فعلی ثبت می‌شوند.</p>
           <div class="number-grid"><label>X<input id="x" type="number" step="0.001" min="-500" max="500"></label><label>Y<input id="y" type="number" step="0.001" min="-500" max="500"></label><label>عرض %<input id="width" type="number" step="0.001" min="0.1" max="300"></label><label>ارتفاع %<input id="height" type="number" step="0.001" min="0.1" max="300"></label></div>
+          <div class="number-grid"><label>واحد عرض<select id="width-unit"><option value="%">درصد ظرف · %</option><option value="px">پیکسل · px</option><option value="vw">درصد صفحه · vw</option></select></label><label>واحد ارتفاع<select id="height-unit"><option value="%">درصد ظرف · %</option><option value="px">پیکسل · px</option><option value="vh">درصد صفحه · vh</option></select></label></div>
           <button id="reset-layout">بازگرداندن چیدمان این اندازه</button>
           <div id="typography"><label>اندازه قلم (px)<input id="fontSize" type="number" min="8" max="200"></label><label>رنگ متن<input id="color" type="color"></label><label>تراز<select id="textAlign"><option value="start">ابتدا</option><option value="center">وسط</option><option value="end">انتها</option></select></label></div>
           <label>ترتیب لایه<input id="z" type="number" min="-10000" max="10000" step="1"></label>
           <label>انتقال ساختاری به بخش<select id="move-anchor"></select></label><button id="move-section">انتقال عنصر به بخش</button><label>ترتیب در بخش<input id="order" type="number" min="0" max="10000" step="1"></label><p class="muted" id="move-advice"></p>
           <div class="tools"><button id="duplicate">تکثیر</button><button id="delete" class="danger">حذف</button></div>
+          <div class="tools"><button id="section-up">بخش بالاتر ↑</button><button id="section-down">بخش پایین‌تر ↓</button></div>
         </section>
         <section><h2>عناصر صفحه</h2><p class="muted">انتخاب چندتایی با Shift+کلیک؛ حرکت با کشیدن عنصر یا کلیدهای جهت. برای تغییر اندازه دستگیره گوشه را بکشید.</p><div id="layers" class="layers"></div></section>
         <section><h2>پشتیبان پیش‌نویس</h2><div class="tools"><button id="export">دانلود JSON</button><label class="file-button">بازیابی JSON<input id="import" type="file" accept="application/json,.json"></label></div><p class="muted">پیش‌نویس به حساب و نسخه پایه وابسته است. تصاویر دستگاه داخل آن ذخیره می‌شوند.</p></section>
         <section><h2>نسخه‌های قبلی صفحه</h2><select id="revisions" aria-label="نسخه‌های قبلی"></select><button id="load-revision">باز کردن نسخه به‌صورت پیش‌نویس</button><button id="load-current">نسخه فعلی</button><p class="muted">بازگردانی ابتدا پیش‌نویس مستقل می‌سازد؛ ثبت نهایی نیاز به دسترسی مدیر دارد.</p></section>
         <section><h2>آرشیو پیش‌نویس‌های ثبت‌شده</h2><select id="archives" aria-label="آرشیو پیش‌نویس‌ها"></select><button id="download-archive">دانلود آرشیو JSON</button></section>
       </aside>
-      <main class="canvas"><div class="canvas-label"><span id="device-label">دسکتاپ · ۱۲۸۰ × ۸۰۰</span><label><input id="snap" type="checkbox"> چسبیدن به شبکه ۱٪</label><span>کلیک: انتخاب · دوبارکلیک متن: ویرایش</span></div><div id="frame-wrap"><iframe id="page" title="صفحه اصلی واقعی باران — پیش‌نویس" sandbox="allow-same-origin"></iframe></div></main>
+      <main class="canvas"><div class="canvas-label"><span id="device-label">دسکتاپ · ۱۴۴۰ × ۸۰۰</span><label><input id="snap" type="checkbox"> چسبیدن به شبکه ۱٪</label><label><input id="guides" type="checkbox"> خطوط راهنما</label><span>کلیک: انتخاب · دوبارکلیک متن: ویرایش</span></div><div id="frame-wrap"><iframe id="page" title="صفحه اصلی واقعی باران — پیش‌نویس" sandbox="allow-same-origin"></iframe></div></main>
     </div>
   </div>
   <div id="notice" role="alert" hidden></div>
   <dialog id="publish-dialog"><h2>ثبت تغییرات صفحه</h2><p id="publish-description"></p><p>پیش‌نویس محفوظ می‌ماند. ثبت GitHub به‌تنهایی تأیید استقرار نیست.</p><div class="tools"><button id="publish-confirm">تأیید ثبت</button><button id="publish-cancel">انصراف</button></div></dialog>
+  <dialog id="output-dialog"><div class="tools"><strong>پیش‌نمایش خروجی ذخیره‌نشده</strong><button id="output-close">بستن</button></div><iframe id="output-frame" title="خروجی عمومی پیش‌نویس" sandbox="allow-scripts"></iframe></dialog>
 </body>
 </html>

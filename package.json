@@ -7,7 +7,7 @@
     "dev": "node scripts/cms-local.mjs",
     "dev:cloudflare": "wrangler dev --port 4175",
     "cms:setup": "node scripts/cms-setup.mjs",
-    "test": "node --test test/cms.test.mjs test/cms-setup.test.mjs test/builder.test.mjs test/builder-publish.test.mjs test/release-security.test.mjs",
+    "test": "node --test --test-concurrency=2 test/cms.test.mjs test/cms-setup.test.mjs test/builder.test.mjs test/builder-publish.test.mjs test/release-security.test.mjs test/schema-v2.test.mjs test/blocks.test.mjs test/pages.test.mjs test/pro-controls.test.mjs test/freeform-publish.test.mjs test/locks.test.mjs test/local-history.test.mjs",
     "test:builder": "node test/builder-browser.mjs",
     "test:builder:publish": "node test/builder-publish-browser.mjs",
     "test:release:runtime": "npm run deploy:check && node test/release-runtime.mjs",
@@ -16,7 +16,9 @@
     "release:prepare": "node scripts/prepare-release.mjs",
     "test:browser": "node test/cms-browser.mjs",
     "test:runtime": "npm run deploy:check && node test/cms-runtime.mjs",
-    "deploy:check": "wrangler deploy --dry-run --outdir .wrangler/dry-run"
+    "deploy:check": "wrangler deploy --dry-run --outdir .wrangler/dry-run",
+    "test:builder:pro": "node test/freeform-browser.mjs",
+    "dev:builder:review": "node scripts/builder-review.mjs"
   },
   "dependencies": {
     "linkedom": "^0.18.12"

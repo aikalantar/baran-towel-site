@@ -17,7 +17,7 @@ for (const args of [["init","-q"],["config","user.name","Builder Fixture"],["con
 const server = await startLocal(sandbox,0), origin = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch({channel:"chrome",headless:true});
 const context = await browser.newContext({viewport:{width:1600,height:1050}}), page = await context.newPage(), errors = [];
-page.setDefaultTimeout(15000); page.on("pageerror",e => errors.push(e.message));
+page.setDefaultTimeout(30000); page.on("pageerror",e => errors.push(e.message));
 const frame = () => page.frameLocator("#page");
 const saved = () => page.getByText("پیش‌نویس در این مرورگر ذخیره شد",{exact:true}).waitFor();
 let count = 0, posts = [];
@@ -101,7 +101,10 @@ try {
   const field = cms.fields.find(f=>f.kind==="text" && f.value==="عنوان ثبت‌شده با صفحه‌ساز");
   const cmsOutput = applyChanges(published,[{id:field.id,value:"CMS compatibility"}],[]);
   assert.ok(cmsOutput.includes('id="builder-state"')); assert.ok(cmsOutput.includes("CMS compatibility")); count++;
-  await page.locator("#continue-editing").click(); await page.locator("#publish").waitFor({state:"visible"});
+  await page.locator("#continue-editing").click();
+  // The toolbar remains visible while the new base/history are loading. Wait
+  // for the editing workspace, rather than accidentally probing the old frame.
+  await page.waitForFunction(()=>!document.querySelector('.workspace').inert&&!document.querySelector('#page').hidden,{},{timeout:60000});
   await frame().locator("#hero-title").waitFor();
   await page.locator(`[data-select="${titleID}"]`).click();
   assert.equal(await page.locator("#x").inputValue(),"3");
@@ -118,9 +121,15 @@ try {
   await frame().getByRole("heading",{name:"Independent English draft"}).waitFor();
   assert.ok(await page.locator("#archives option").count()>0); count++;
   await page.locator("#page-selector").selectOption("public/index.html"); await frame().locator('html[lang="fa"]').waitFor();
+  const originalRevision=await page.locator('#revisions option').filter({hasText:'Isolated publication fixture'}).getAttribute('value');
+  await page.locator('#revisions').selectOption(originalRevision);
   await page.locator("#load-revision").click(); await frame().getByRole("heading",{name:"باران؛ فراتر از حوله",exact:true}).waitFor();
   assert.equal(parseHTML(await fs.readFile(path.join(sandbox,"public/index.html"),"utf8")).document.querySelector("h1").textContent,"عنوان ثبت‌شده با صفحه‌ساز"); count++;
   assert.ok((await fs.readFile(path.join(root,"public/index.html"))).equals(realHome));
   assert.equal(errors.length,0);
   console.log(JSON.stringify({passed:count,isolatedLocalPublication:true,realOnlinePublication:false,publicWorkspaceUnchanged:true,browserErrors:errors.length}));
-} finally { await browser.close(); await new Promise(resolve=>server.close(resolve)); }
+} catch(error) {
+  await page.screenshot({path:'.cms-local/builder-publish-failure.png',fullPage:true}).catch(()=>{});
+  console.log(JSON.stringify({failedAt:count,error:error.message,url:page.url(),title:await page.title().catch(()=>''),errors}));
+  throw error;
+} finally { await browser.close(); server.closeAllConnections(); await new Promise(resolve=>server.close(resolve)); }

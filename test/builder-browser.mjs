@@ -119,7 +119,7 @@ try {
   // Export and import are concrete, validated and undoable.
   const downloadEvent = page.waitForEvent("download"); await page.locator("#export").click();
   const download = await downloadEvent; const exportFile = path.resolve(".cms-local/builder-export.json"); await download.saveAs(exportFile);
-  const exported = await fs.readFile(exportFile, "utf8"); assert.equal(JSON.parse(exported).version, 1);
+  const exported = await fs.readFile(exportFile, "utf8"); assert.equal(JSON.parse(exported).version, 2);
   await page.locator("#text").fill("متن پس از خروجی"); await saved();
   await page.locator("#import").setInputFiles(exportFile); await saved();
   assert.equal(await frame().locator("#hero-title").innerText(), "عنوان بصری آزمایشی باران");

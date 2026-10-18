@@ -1,19 +1,27 @@
-import { History, clone, emptyLayout, safeLink, safeImage, validModel, decodeDraft, encodeDraft } from "./model.js";
+import { History, clone, emptyLayout, safeLink, safeImage, validModel, decodeDraft, encodeDraft, effectiveLayout, effectiveStyle, DEVICES } from "./model.js";
 import { isFree } from "./layout.js";
 import { optimizeImage } from "./images.js";
+import { BLOCKS, createBlock } from './blocks.js';
+import {renderCanvas,updateGeometry} from './canvas.js';
+import {installProfessionalControls,cloneSubtrees,subtreeIds,selectedRoots} from './pro-controls.js';
+import {installPagesUI} from './pages-ui.js';
+import {lockedBy,allowsLockedChanges} from './locks.js';
 
 const $ = selector => document.querySelector(selector);
 const frame = $("#page");
 let base, history, library, db, storageKey, user, doc, selected = [], device = "desktop", preview = false;
 let gesture = null, saveTimer, noticeTimer, locked = false, saveChain = Promise.resolve(), originals = new Map();
 let sessionInfo, currentPath = "public/index.html", activeRef = "", sessionTimer, publishing = false, publishRequest = null, publication = null;
+const updateHooks=[];
+const notifyControls=()=>{if(history&&doc)for(const fn of updateHooks)fn();};
 const model = () => history.present;
-const element = id => model().elements.find(e => e.id === id);
+const element = id => model().elements.find(e => e.id === id)||model().sections?.find(e=>e.id===id);
 const selectedElement = () => element(selected[0]);
-const nodeFor = id => originals.get(id)?.node || doc?.querySelector(`[data-builder-id="${id}"]`);
+const nodeFor = id => originals.get(id)?.node || doc?.querySelector(`[data-builder-id="${id}"]`) || doc?.querySelector(`[data-builder-anchor="${id}"]`);
 const unitFor = id => { const node = nodeFor(id); return node?.closest("picture") || node; };
 const anchorFor = id => doc.querySelector(`[data-builder-anchor="${id}"]`);
-const layoutFor = e => ({ ...e.layouts[device] });
+const layoutFor = e => effectiveLayout(e,device);
+const parentFor=e=>e.parentId==='page'?doc.querySelector('main'):nodeFor(e.parentId)||anchorFor(e.anchor);
 const round = n => Math.round(n * 1000) / 1000;
 
 function notice(text) {
@@ -27,7 +35,7 @@ async function api(endpoint, body) {
   try { response = await fetch(`/api/cms${endpoint}`, { credentials: "same-origin", cache: "no-store", signal:AbortSignal.timeout(body ? 60000 : 30000), ...(body ? {method:"POST",headers:{"Content-Type":"application/json","X-CMS-Request":"1"},body:JSON.stringify(body)} : {}) }); }
   catch { throw new Error(body ? "پاسخ ثبت دریافت نشد؛ ممکن است ثبت انجام شده باشد. پیش‌نویس محفوظ است؛ تکرار همان درخواست امن است." : "ارتباط با CMS برقرار نشد؛ اتصال را بررسی کنید."); }
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "دریافت اطلاعات ممکن نشد.");
+  if (!response.ok) {const error=new Error(data.error||'دریافت اطلاعات ممکن نشد.');error.status=response.status;throw error;}
   return data;
 }
 async function openDB() {
@@ -65,7 +73,9 @@ function changed() {
   save();
 }
 function commit(next, updateControls = true) {
-  if (locked || preview || publishing || !validModel(next, base.model, base.anchors)) return false;
+  if (locked || preview || publishing) return false;
+  if(!allowsLockedChanges(model(),next)){notice('این عنصر یا ظرف والد آن قفل است؛ ابتدا قفل را از فهرست لایه‌ها باز کنید.');properties();return false;}
+  if(!validModel(next,base.model,base.anchors)){notice('این تغییر با ساختار امن صفحه سازگار نیست. والد، H1 یا دادهٔ بلوک را بررسی کنید؛ پیش‌نویس قبلی حفظ شد.');return false;}
   if (!history.commit(next)) return false;
   render();
   if (updateControls) properties();
@@ -100,90 +110,32 @@ function rememberOriginals() {
 }
 function render(draft = model()) {
   if (!doc) return;
-  // Restore original DOM relationships before reapplying structural operations.
-  // Keep node references: replacing ancestor innerHTML would duplicate moved nodes.
-  for (const original of [...originals.values()].reverse()) {
-    if (original.unit.parentNode !== original.parent) original.parent.insertBefore(original.unit, original.next?.parentNode === original.parent ? original.next : null);
-  }
-  for (const node of doc.querySelectorAll("[data-builder-added]")) {
-    if (!draft.elements.some(e => e.id === node.dataset.builderId && !e.deleted)) node.remove();
-  }
-  for (const e of draft.elements) {
-    let node = nodeFor(e.id);
-    if (!node && !e.source && !e.deleted) {
-      node = doc.createElement(({ image: "img", heading: "h2", button: "a", text: "p" })[e.type]);
-      node.dataset.builderId = e.id;
-      node.dataset.builderAdded = "true";
-      node.dataset.builderType = e.type;
-      node.dataset.builderCreated = "";
-      anchorFor(e.anchor).append(node);
-    }
-    if (!node) continue;
-    const original = originals.get(e.id);
-    const unit = unitFor(e.id);
-    node.removeAttribute("data-builder-editing");
-    if (original?.style) unit.setAttribute("style", original.style); else unit.removeAttribute("style");
-    if (unit !== node) { if (original?.nodeStyle) node.setAttribute("style",original.nodeStyle); else node.removeAttribute("style"); }
-    if (e.deleted) { unit.style.setProperty("display", "none", "important"); continue; }
-    if (e.type === "image") {
-      if (node.getAttribute("src") !== e.content.src) node.src = e.content.src;
-      node.alt = e.content.alt;
-      if (!e.source || e.content.src !== original.src) {
-        node.removeAttribute("srcset");
-        for (const source of original?.sources || []) source.node.removeAttribute("srcset");
-        if (e.content.width) node.setAttribute("width",e.content.width);
-        if (e.content.height) node.setAttribute("height",e.content.height);
-        if (e.content.variants?.length) { node.srcset = [...e.content.variants,{src:e.content.src,width:e.content.width}].map(v => `${v.src} ${v.width}w`).join(", "); node.sizes = "100vw"; }
-      } else {
-        if (original.srcset) node.setAttribute("srcset", original.srcset);
-        for (const name of ["width","height"]) { if (original[name]) node.setAttribute(name,original[name]); else node.removeAttribute(name); }
-        for (const source of original.sources) if (source.srcset) source.node.setAttribute("srcset", source.srcset);
-      }
-    } else if (e.source) {
-      const indices = e.source.textNodes;
-      indices.forEach((index, i) => { if (node.childNodes[index]) node.childNodes[index].textContent = i ? "" : e.content.text; });
-    } else node.textContent = e.content.text;
-    if (e.content.href) node.setAttribute("href", e.content.href);
-    const anchor = anchorFor(e.anchor);
-    if (isFree(e)) anchor.append(unit);
-    if (doc.defaultView.getComputedStyle(anchor).position === "static") anchor.style.position = "relative";
-    const bounds = anchor.getBoundingClientRect(), layout = layoutFor(e);
-    if (isFree(e)) {
-      unit.style.setProperty("position","absolute","important");
-      unit.style.left = `${layout.x ?? 10}%`;
-      unit.style.top = `${layout.y ?? 10}%`;
-    } else if (layout.x != null || layout.y != null || e.z != null) {
-      if (doc.defaultView.getComputedStyle(unit).position === "static") unit.style.position = "relative";
-      unit.style.translate = `${(layout.x || 0) * bounds.width / 100}px ${(layout.y || 0) * bounds.height / 100}px`;
-    }
-    if ((layout.width != null || layout.height != null) && doc.defaultView.getComputedStyle(unit).display === "inline") unit.style.display = "inline-block";
-    if (layout.width != null) { unit.style.setProperty("width", `${layout.width * bounds.width / 100}px`, "important"); unit.style.setProperty("max-width", "none", "important"); unit.style.setProperty("min-width", "0", "important"); }
-    if (layout.height != null) { unit.style.setProperty("height", `${layout.height * bounds.height / 100}px`, "important"); unit.style.setProperty("min-height", "0", "important"); }
-    if (unit !== node && isFree(e)) { node.style.setProperty("width","100%","important"); node.style.setProperty("height","100%","important"); node.style.objectFit = "cover"; }
-    if (e.z != null) unit.style.zIndex = e.z;
-    for (const [key, value] of Object.entries(e.style)) node.style[key] = key === "fontSize" ? `${value}px` : value;
-  }
-  for (const anchor of base.anchors) for (const e of draft.elements.filter(e => !e.deleted && isFree(e) && e.anchor === anchor.id).sort((a,b)=>(a.order||0)-(b.order||0))) anchorFor(anchor.id).append(unitFor(e.id));
-  selected = selected.filter(id => draft.elements.some(e => e.id === id && !e.deleted));
-  drawSelection();
-  layers(draft);
+  const alive=renderCanvas({doc,draft,base,originals,nodeFor,unitFor,anchorFor});
+  selected=selected.filter(id=>{const e=[...draft.elements,...draft.sections].find(e=>e.id===id);return e&&alive(e);});
+  refreshAnchors(draft);drawSelection();layers(draft);notifyControls();
+}
+function refreshAnchors(draft=model()){
+  const anchors=[...draft.sections.filter(e=>!e.deleted).map(e=>({id:e.id,label:e.label})),...draft.elements.filter(e=>!e.deleted&&e.type==='container').map(e=>({id:e.id,label:e.content.text||e.kind||'ظرف'}))];
+  for(const key of ['#anchor','#move-anchor']){const select=$(key),previous=select.value;select.replaceChildren();for(const a of anchors){const option=document.createElement('option');option.value=a.id;option.textContent=a.label;select.append(option);}select.value=anchors.some(a=>a.id===previous)?previous:anchors.find(a=>a.id!=='section-0')?.id||anchors[0]?.id;}
 }
 function layers(draft = model()) {
   const holder = $("#layers");
   const scroll = holder.scrollTop;
   holder.replaceChildren();
-  for (const e of draft.elements.filter(e => !e.deleted)) {
+  for (const e of [...draft.sections,...draft.elements].filter(e => !e.deleted)) {
     const button = document.createElement("button");
-    button.textContent = `${e.type === "image" ? "▧" : "T"} ${e.content.text || e.content.alt || "تصویر"}`;
+    button.textContent = `${e.locked?'🔒 ':''}${effectiveLayout(e,device).hidden?'◌ ':''}${e.type === 'container'?'▤':e.type === "image" ? "▧" : "T"} ${e.content?.text || e.content?.alt || e.label || e.kind || e.type}`;
     button.dataset.select = e.id;
     button.setAttribute("aria-pressed", selected.includes(e.id));
-    button.title = e.content.text || e.content.alt || e.id;
+    button.title = e.content?.text || e.content?.alt || e.label || e.id;
+    let depth=0,parent=e.parentId;while(parent&&parent!=='page'&&depth<8){const p=draft.elements.find(n=>n.id===parent);if(!p)break;depth++;parent=p.parentId;}button.style.paddingInlineStart=`${10+depth*14}px`;
     holder.append(button);
   }
   holder.scrollTop = scroll;
 }
 function drawSelection() {
   if (!doc) return;
+  doc.querySelectorAll('[data-builder-overlay=guide]').forEach(n=>n.remove());
   if (!gesture) doc.querySelectorAll("[data-builder-overlay]").forEach(n => n.remove());
   doc.querySelectorAll("[data-builder-editing]").forEach(n => n.removeAttribute("data-builder-editing"));
   if (preview) return;
@@ -191,7 +143,7 @@ function drawSelection() {
     const node = nodeFor(id);
     if (!node || !node.getClientRects().length) continue;
     node.setAttribute("data-builder-editing", "true");
-    if (selected.length !== 1) continue;
+    if (selected.length !== 1||element(id)?.locked||model().sections.some(s=>s.id===id)) continue;
     const rect = node.getBoundingClientRect();
     for (const corner of ["nw", "ne", "sw", "se"]) {
       const handle = (gesture && doc.querySelector(`[data-resize="${corner}"]`)) || doc.createElement("button");
@@ -202,55 +154,80 @@ function drawSelection() {
       if (!handle.isConnected) doc.body.append(handle);
     }
   }
+  if($('#guides').checked&&selected.length){const e=element(selected[0]),parent=parentFor(e).getBoundingClientRect(),rect=nodeFor(e.id).getBoundingClientRect();for(const vertical of [true,false]){const line=doc.createElement('div');line.dataset.builderOverlay='guide';const mid=vertical?parent.left+parent.width/2:parent.top+parent.height/2,aligned=Math.abs((vertical?rect.left+rect.width/2:rect.top+rect.height/2)-mid)<5;line.style.cssText=`position:fixed;pointer-events:none;z-index:2147483646;background:${aligned?'#22a65b':'#a855f7'};opacity:.65;left:${vertical?mid:parent.left}px;top:${vertical?parent.top:mid}px;width:${vertical?1:parent.width}px;height:${vertical?parent.height:1}px`;doc.body.append(line);}}
 }
 function select(id, multiple = false) {
   if (preview || locked) return;
   selected = multiple ? selected.includes(id) ? selected.filter(i => i !== id) : [...selected, id] : [id];
   if (selectedElement()) $("#anchor").value = selectedElement().anchor;
-  drawSelection(); layers(); properties();
+  for(let detail=nodeFor(id)?.closest('details');detail;detail=detail.parentElement?.closest('details'))detail.open=true;
+  drawSelection(); layers(); properties();notifyControls();
 }
 function properties() {
   const e = selectedElement();
   $("#properties").hidden = !e;
   if (!e) return;
-  $("#selection-label").textContent = selected.length > 1 ? `${selected.length} عنصر انتخاب شده` : ({ text: "متن", heading: "عنوان", image: "تصویر", button: "دکمه / پیوند" })[e.type];
+  $("#selection-label").textContent = selected.length > 1 ? `${selected.length} عنصر انتخاب شده` : ({ text: "متن", heading: "عنوان", image: "تصویر", button: "دکمه / پیوند",container:'بخش / ظرف',divider:'جداکننده',spacer:'فاصله' })[e.type];
   $("#element-id").textContent = e.id;
-  $("#text-group").hidden = e.type === "image";
+  $("#text-group").hidden = !['text','heading','button'].includes(e.type);
+  $('#rich-tools').hidden=!!e.source||!['text','heading'].includes(e.type);
+  $('#section-up').hidden=$('#section-down').hidden=!model().sections.some(s=>s.id===e.id)||!!e.protected;
   $("#image-group").hidden = e.type !== "image";
-  $("#typography").hidden = e.type === "image";
+  $("#typography").hidden = true;
   $("#link-group").hidden = e.type !== "button";
   $("#text").value = e.content.text || "";
   $("#alt").value = e.content.alt || "";
   $("#href").value = e.content.href || "";
   $("#image-library").value = e.content.src || "";
-  const node = nodeFor(e.id), rect = node.getBoundingClientRect(), anchor = anchorFor(e.anchor).getBoundingClientRect(), layout = layoutFor(e), computed = doc.defaultView.getComputedStyle(node);
+  const node = nodeFor(e.id);if(!node)return;
+  const rect = node.getBoundingClientRect(), anchor = parentFor(e).getBoundingClientRect(), layout = layoutFor(e), computed = doc.defaultView.getComputedStyle(node);
   $("#x").value = round(layout.x ?? (isFree(e) ? 10 : 0));
   $("#y").value = round(layout.y ?? (isFree(e) ? 10 : 0));
-  $("#width").value = round(layout.width ?? rect.width / anchor.width * 100);
-  $("#height").value = round(layout.height ?? rect.height / anchor.height * 100);
+  for(const dimension of ['width','height']){
+    const unit=layout[dimension+'Unit']||'%';
+    $('#'+dimension+'-unit').value=unit;
+    const reference=unit==='px'?1:unit==='%'?anchor[dimension]/100:(dimension==='width'?doc.defaultView.innerWidth:doc.defaultView.innerHeight)/100;
+    $('#'+dimension).value=round(layout[dimension]??rect[dimension]/Math.max(.001,reference));
+    $('#'+dimension).max=unit==='%'?'300':'4000';
+    $('#'+dimension).previousSibling.textContent=(dimension==='width'?'عرض ':'ارتفاع ')+unit;
+  }
   $("#z").value = e.z ?? (parseInt(computed.zIndex) || 0);
   $("#fontSize").value = round(parseFloat(computed.fontSize));
   const rgb = computed.color.match(/\d+/g);
   $("#color").value = e.style.color || (rgb ? `#${rgb.slice(0, 3).map(n => Number(n).toString(16).padStart(2, "0")).join("")}` : "#263329");
   $("#textAlign").value = e.style.textAlign || "start";
-  $("#move-anchor").value = e.anchor;
+  $("#move-anchor").value = e.parentId||e.anchor;
   $("#order").value = e.order || 0;
-  $("#move-section").disabled = e.movable === false;
+  $("#move-section").disabled = e.movable === false||!!e.locked||model().sections.some(s=>s.id===e.id);
   $("#move-advice").textContent = e.movable === false ? "انتقال این عنصر به‌دلیل ساختار تو‌در‌تو یا رفتار صفحه مجاز نیست؛ متن و اندازه قابل ویرایش‌اند." : "پس از انتقال، چیدمان موبایل را بررسی کنید؛ طرح شما خودکار تغییر نمی‌کند.";
+  const originalSection=model().sections.some(s=>s.id===e.id);
+  const editingLocked=!!lockedBy(model(),e.id);
+  for(const name of ['text','alt','href','image-library','upload','order','z','duplicate','delete','move-section','section-up','section-down','rich-bold','rich-italic','rich-underline'])$('#'+name).disabled=editingLocked;
+  $('#move-section').disabled ||= e.movable===false||originalSection;
+  for(const name of ['x','y','width','height','width-unit','height-unit','reset-layout'])$('#'+name).disabled=originalSection||editingLocked;
+  if(editingLocked)$('#move-advice').textContent='عنصر یا ظرف والد قفل است؛ ابتدا قفل را در فهرست لایه‌ها باز کنید.';
+  if(originalSection)$('#move-advice').textContent='بخش اصلی ساختار سایت را حفظ می‌کند؛ از ترتیب بخش‌ها، فاصله و کمینهٔ ارتفاع در «ظاهر و چیدمان» استفاده کنید. بخش تازهٔ کتابخانه، جابه‌جایی آزاد دارد.';
+  notifyControls();
 }
 
 function startGesture(event) {
   if (preview || locked || publishing || event.button !== 0) return;
   const resize = event.target.closest("[data-resize]")?.dataset.resize;
-  const hit = event.target.closest("[data-builder-id]") || doc.elementsFromPoint(event.clientX, event.clientY).map(n => n.closest("[data-builder-id]")).find(Boolean);
+  const hit = event.target.closest("[data-builder-id]") || doc.elementsFromPoint(event.clientX, event.clientY).map(n => n.closest("[data-builder-id]")).find(Boolean) || event.target.closest('[data-builder-anchor]');
   if (!resize && !hit) { selected = []; drawSelection(); properties(); layers(); return; }
   event.preventDefault();
   if (!resize) {
-    if (event.shiftKey) { select(hit.dataset.builderId, true); return; }
-    if (!selected.includes(hit.dataset.builderId)) select(hit.dataset.builderId);
+    let hitId=hit.dataset.builderId||hit.dataset.builderAnchor;
+    if (event.shiftKey) { select(hitId, true); return; }
+    const group=selected.find(id=>element(id)?.kind==='group'&&nodeFor(id).contains(hit));
+    if(group)hitId=group;
+    if (!selected.includes(hitId)) select(hitId);
   }
-  const items = selected.map(id => {
-    const e = element(id), rect = nodeFor(id).getBoundingClientRect(), anchor = anchorFor(e.anchor).getBoundingClientRect();
+  if(selected.some(id=>lockedBy(model(),id)))return notice('برای جابه‌جایی، ابتدا قفل عنصر یا ظرف والد را باز کنید.');
+  if(selected.some(id=>model().sections.some(s=>s.id===id)))return;
+  const roots=selectedRoots([...model().sections,...model().elements],selected);
+  const items = roots.map(id => {
+    const e = element(id), rect = nodeFor(id).getBoundingClientRect(), anchor = parentFor(e).getBoundingClientRect();
     return { id, rect, anchor, layout: layoutFor(e) };
   });
   gesture = { before: clone(model()), x: event.clientX, y: event.clientY, scrollY:doc.defaultView.scrollY, resize, items, moved: false, target: event.target, pointerId: event.pointerId };
@@ -263,7 +240,7 @@ function moveGesture(event) {
   gesture.moved = true;
   const next = clone(gesture.before);
   for (const item of gesture.items) {
-    const e = next.elements.find(e => e.id === item.id), l = { ...item.layout };
+    const e = [...next.elements,...next.sections].find(e => e.id === item.id), l = { ...item.layout };
     const xDelta = dx / item.anchor.width * 100, yDelta = dy / item.anchor.height * 100;
     const snap = n => $("#snap").checked ? Math.round(n) : round(n);
     if (gesture.resize) {
@@ -271,6 +248,7 @@ function moveGesture(event) {
       const west = gesture.resize.includes("w"), north = gesture.resize.includes("n");
       l.width = Math.max(.1, Math.min(300, snap(w + (west ? -xDelta : xDelta))));
       l.height = Math.max(.1, Math.min(300, snap(h + (north ? -yDelta : yDelta))));
+      l.widthUnit='%';l.heightUnit='%';
       if (west) l.x = snap((item.layout.x ?? (isFree(e) ? 10 : 0)) + w - l.width);
       if (north) l.y = snap((item.layout.y ?? (isFree(e) ? 10 : 0)) + h - l.height);
     } else {
@@ -282,9 +260,11 @@ function moveGesture(event) {
   gesture.next = next;
   gesture.drop = null;
   doc.querySelectorAll("[data-builder-drop]").forEach(n => n.removeAttribute("data-builder-drop"));
-  if (!gesture.resize && gesture.items.every(item => element(item.id).movable !== false)) {
-    const target = base.anchors.find(a => { const r = anchorFor(a.id).getBoundingClientRect(); return event.clientX >= r.left && event.clientX <= r.right && event.clientY >= r.top && event.clientY <= r.bottom && gesture.items.some(item => element(item.id).anchor !== a.id); });
-    if (target) { gesture.drop = {id:target.id,x:event.clientX,y:event.clientY}; anchorFor(target.id).setAttribute("data-builder-drop",""); }
+  if (!gesture.resize && gesture.items.every(item => element(item.id).movable !== false&&!model().sections.some(s=>s.id===item.id))) {
+    const excluded=subtreeIds(model().elements,gesture.items.map(i=>i.id));
+    const targets=[...model().sections,...model().elements.filter(e=>e.type==='container'&&(e.parentId==='page'||event.altKey))].filter(e=>!e.deleted&&!excluded.has(e.id));
+    const target = targets.find(a => { const r = nodeFor(a.id).getBoundingClientRect(); return event.clientX >= r.left && event.clientX <= r.right && event.clientY >= r.top && event.clientY <= r.bottom && gesture.items.some(item => (element(item.id).parentId||element(item.id).anchor) !== a.id); });
+    if (target) { gesture.drop = {id:target.id,x:event.clientX,y:event.clientY}; nodeFor(target.id).setAttribute("data-builder-drop",""); }
   }
   if (!gesture.resize && event.clientY > doc.defaultView.innerHeight - 25) doc.defaultView.scrollBy(0,18);
   if (!gesture.resize && event.clientY < 25) doc.defaultView.scrollBy(0,-18);
@@ -297,8 +277,9 @@ function endGesture(event) {
   gesture = null;
   doc.querySelectorAll("[data-builder-drop]").forEach(n => n.removeAttribute("data-builder-drop"));
   if (next && drop) {
-    const bounds = anchorFor(drop.id).getBoundingClientRect();
-    next.elements.filter(e => selected.includes(e.id)).forEach((e,i) => { e.anchor = drop.id; e.free = true; e.order = i; e.layouts[device] = {...e.layouts[device],x:round((drop.x-bounds.left)/bounds.width*100),y:round((drop.y-bounds.top)/bounds.height*100)}; });
+    const bounds = nodeFor(drop.id).getBoundingClientRect();
+    transfer(next,selected,drop.id,true);
+    next.elements.filter(e => selected.includes(e.id)).forEach((e,i) => { e.order = i; e.layouts[device] = {...e.layouts[device],x:round((drop.x-bounds.left)/bounds.width*100),y:round((drop.y-bounds.top)/Math.max(1,bounds.height)*100)}; });
     notice("عنصر به بخش جدید منتقل شد. چیدمان موبایل را بررسی کنید؛ تنظیمات اندازه دیگر حفظ شدند.");
   }
   if (next) commit(next); else drawSelection();
@@ -306,41 +287,66 @@ function endGesture(event) {
 function cancelGesture() {
   if (gesture) { gesture = null; render(); properties(); }
 }
+function rootAnchor(id,draft=model()){
+  const section=draft.sections.find(s=>s.id===id);if(section)return id;
+  const node=draft.elements.find(e=>e.id===id);return node?.parentId==='page'?node.id:node?.anchor;
+}
+function transfer(next,ids,destination,free=false){
+  const roots=selectedRoots(next.elements,ids),included=subtreeIds(next.elements,roots);
+  if(included.has(destination))throw Error('نمی‌توان ظرف را به داخل خودش منتقل کرد.');
+  const anchor=rootAnchor(destination,next);
+  for(const e of next.elements.filter(e=>included.has(e.id))){if(roots.includes(e.id)){e.parentId=destination;e.layoutMode=free?'free':'flow';e.free=free;}e.anchor=anchor;}
+}
 function add(type) {
   if (preview || locked) return;
-  const id = `new-${crypto.randomUUID()}`, anchor = $("#anchor").value;
+  const id = `new-${crypto.randomUUID()}`, parentId = $("#anchor").value, anchor=rootAnchor(parentId);
   const e = {
-    id, type, anchor, source: null, tag: ({ text: "p", heading: "h2", image: "img", button: "a" })[type],
+    id, type, anchor, parentId,layoutMode:'free',locked:false,responsiveInheritance:false,responsiveStyles:{tablet:{},mobile:{}},source: null, tag: ({ text: "p", heading: "h2", image: "img", button: "a" })[type],
     content: type === "image" ? { src: library.images[0]?.url || "/assets/images/home/baran-hero.webp", alt: "تصویر جدید" } : { text: ({ text: "متن تازه خود را اینجا بنویسید", heading: "عنوان تازه", button: "مشاهده مجموعه" })[type], ...(type === "button" ? { href: "/catalog/" } : {}) },
-    layouts: { desktop: { x: 10, y: 15, width: type === "image" ? 25 : 35, height: type === "image" ? 35 : 12 }, mobile: { x: 5, y: 15, width: type === "image" ? 60 : 85, height: type === "image" ? 35 : 15 } },
-    style: type === "image" ? {} : { fontSize: type === "heading" ? 32 : 18, color: "#ffffff" }, z: 10, deleted: false,
+    layouts: { desktop: { x: 10, y: 15, width: type === "image" ? 25 : 35, height: type === "image" ? 35 : 12 },tablet:{}, mobile: { x: 5, y: 15, width: type === "image" ? 60 : 85, height: type === "image" ? 35 : 15 } },
+    style: type === "image" ? {} : { fontSize: type === "heading" ? 32 : 18 }, z: 10, deleted: false,
   };
   if (mutate(next => next.elements.push(e))) { select(id); nodeFor(id).scrollIntoView({ block: "center" }); }
 }
-function duplicate() {
-  const copies = selected.map(id => {
-    const e = clone(element(id)), node = nodeFor(id), rect = node.getBoundingClientRect(), bounds = anchorFor(e.anchor).getBoundingClientRect();
-    e.id = `new-${crypto.randomUUID()}`;
-    e.source = null;
-    e.layouts = emptyLayout();
-    e.layouts[device] = { x: round((rect.left - bounds.left) / bounds.width * 100 + 2), y: round((rect.top - bounds.top) / bounds.height * 100 + 2), width: round(rect.width / bounds.width * 100), height: round(rect.height / bounds.height * 100) };
-    // Keep a usable fallback on the other viewport too.
-    e.layouts[device === "mobile" ? "desktop" : "mobile"] = { ...e.layouts[device], width: device === "desktop" ? Math.min(90, e.layouts[device].width * 2) : e.layouts[device].width };
-    const computed = doc.defaultView.getComputedStyle(node);
-    if (e.type !== "image") { e.style.fontSize ||= parseFloat(computed.fontSize); const rgb = computed.color.match(/\d+/g); if (rgb) e.style.color ||= `#${rgb.slice(0, 3).map(n => Number(n).toString(16).padStart(2, "0")).join("")}`; }
-    e.z = (e.z || 0) + 1;
-    return e;
-  });
-  if (mutate(next => next.elements.push(...copies))) { selected = copies.map(e => e.id); render(); properties(); }
+function insertBlock(kind,parentId=$('#anchor').value){
+  if(preview||locked||publishing)return;
+  try{
+    const nodes=createBlock(kind,{anchor:parentId==='page'?'placeholder':rootAnchor(parentId),parentId,language:model().page.language});
+    if(parentId==='page'){if(nodes[0].kind!=='section')throw Error('در سطح صفحه، یک بخش اضافه کنید.');for(const e of nodes)e.anchor=nodes[0].id;}
+    const siblings=model().elements.filter(e=>(e.parentId||e.anchor)===parentId);nodes[0].order=siblings.length?Math.max(...siblings.map(e=>e.order||0))+1:0;
+    if(mutate(next=>next.elements.push(...nodes))){select(nodes[0].id);nodeFor(nodes[0].id).scrollIntoView({block:'center'});}
+  }catch(error){notice(error.message);}
 }
-function remove() { mutate(next => next.elements.filter(e => selected.includes(e.id)).forEach(e => e.deleted = true)); }
+function duplicate() {
+  if(selected.some(id=>model().sections.some(s=>s.id===id)))return notice('برای تکثیر بخش اصلی، صفحه را تکثیر کنید یا یک بخش تازه از کتابخانه بسازید.');
+  try{
+    const source=clone(model().elements);
+    for(const e of source.filter(e=>selected.includes(e.id)&&e.source)){
+      const rect=nodeFor(e.id).getBoundingClientRect(),bounds=parentFor(e).getBoundingClientRect();
+      for(const d of DEVICES) e.layouts[d]={...effectiveLayout(e,d),x:round((rect.left-bounds.left)/bounds.width*100),y:round((rect.top-bounds.top)/Math.max(1,bounds.height)*100),width:round(rect.width/bounds.width*100),height:round(rect.height/Math.max(1,bounds.height)*100)};
+      if(e.type==='text')e.tag='p';
+    }
+    const copies=cloneSubtrees(source,selected);
+    if(mutate(next=>next.elements.push(...copies.elements))){selected=copies.ids;render();properties();}
+  }catch(error){notice(error.message);}
+}
+function remove() {
+  if(selected.some(id=>element(id)?.locked||model().sections.find(s=>s.id===id)?.protected))return notice('ابتدا قفل را باز کنید؛ سربرگ و پاورقی اصلی قابل حذف نیستند.');
+  const roots=selectedRoots([...model().sections,...model().elements],selected);
+  const ids=subtreeIds([...model().sections,...model().elements],roots);
+  if([...ids].some(id=>element(id)?.type==='container')&&!confirm('این بخش و محتوای داخل آن از پیش‌نویس حذف شوند؟ واگرد در دسترس است.'))return;
+  mutate(next=>[...next.sections,...next.elements].filter(e=>ids.has(e.id)).forEach(e=>e.deleted=true));
+}
 
 function bindFrame() {
   doc = frame.contentDocument;
+  frame.hidden=false;$('.workspace').inert=false;
   rememberOriginals();
-  doc.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); }, true);
+  doc.addEventListener("click", event => { if(!preview||event.target.closest('a,button'))event.preventDefault(); event.stopPropagation(); }, true);
   doc.addEventListener("submit", event => event.preventDefault(), true);
   doc.addEventListener("dragstart", event => event.preventDefault());
+  doc.addEventListener('dragover',event=>{if([...event.dataTransfer.types].includes('text/x-baran-block')){event.preventDefault();event.dataTransfer.dropEffect='copy';}});
+  doc.addEventListener('drop',event=>{const kind=event.dataTransfer.getData('text/x-baran-block');if(!BLOCKS.some(b=>b.id===kind))return;event.preventDefault();const node=event.target.closest('[data-builder-type=container],[data-builder-anchor]');const destination=node?.dataset.builderId||node?.dataset.builderAnchor||$('#anchor').value;insertBlock(kind,destination);});
   doc.addEventListener("pointerdown", startGesture);
   doc.addEventListener("pointermove", moveGesture);
   doc.addEventListener("pointerup", endGesture);
@@ -365,14 +371,15 @@ function keyboard(event) {
   }
   if (modifier && event.key.toLowerCase() === "s") { event.preventDefault(); save(); return; }
   if (event.key === "Escape") { cancelGesture(); return; }
-  if (typing || !selected.length) return;
+  if (typing || !selected.length || selected.some(id=>lockedBy(model(),id))) return;
   if (["Delete", "Backspace"].includes(event.key)) { event.preventDefault(); remove(); }
   if (modifier && event.key.toLowerCase() === "d") { event.preventDefault(); duplicate(); }
   const direction = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
   if (direction) {
     event.preventDefault();
-    mutate(next => next.elements.filter(e => selected.includes(e.id)).forEach(e => {
-      const l = layoutFor(e), bounds = anchorFor(e.anchor).getBoundingClientRect(), step = event.shiftKey ? 10 : 1;
+    const roots=selectedRoots([...model().sections,...model().elements],selected);
+    mutate(next => [...next.elements,...next.sections].filter(e => roots.includes(e.id)).forEach(e => {
+      const l = layoutFor(e), bounds = parentFor(e).getBoundingClientRect(), step = event.shiftKey ? 10 : 1;
       l.x = round((l.x ?? (isFree(e) ? 10 : 0)) + direction[0] * step / bounds.width * 100);
       l.y = round((l.y ?? (isFree(e) ? 10 : 0)) + direction[1] * step / bounds.height * 100);
       e.layouts[device] = l;
@@ -401,15 +408,15 @@ $("#delete").onclick = remove;
 $("#move-section").onclick = () => {
   const destination = $("#move-anchor").value;
   if (selected.some(id => element(id).movable === false)) return notice("یکی از عناصر ساختار وابسته دارد و قابل انتقال نیست.");
-  mutate(next => next.elements.filter(e => selected.includes(e.id)).forEach((e,i) => { e.anchor = destination; e.free = true; e.order = i; e.layouts[device] = {...e.layouts[device],x:10,y:10}; }));
+  try{mutate(next => {transfer(next,selected,destination,true);next.elements.filter(e => selected.includes(e.id)).forEach((e,i) => {e.order=i;e.layouts[device]={...e.layouts[device],x:10,y:10};});});}catch(error){return notice(error.message);}
   notice("انتقال ساختاری انجام شد. برای موبایل چیدمان را بررسی کنید.");
 };
 $("#order").onchange = event => {
   const e = selectedElement();
   if (!e || !event.target.checkValidity()) return;
   if (e.movable === false) { properties(); return notice("ساختار این عنصر اجازه تغییر والد/ترتیب را نمی‌دهد."); }
-  const rect = unitFor(e.id).getBoundingClientRect(), anchor = anchorFor(e.anchor).getBoundingClientRect();
-  mutate(next => { const item = next.elements.find(item => item.id === e.id); item.order = Number(event.target.value); if (!isFree(item)) { item.free = true; item.layouts[device] = {x:round((rect.left-anchor.left)/anchor.width*100),y:round((rect.top-anchor.top)/anchor.height*100),width:round(rect.width/anchor.width*100),height:round(rect.height/anchor.height*100)}; } });
+  const rect = unitFor(e.id).getBoundingClientRect(), anchor = parentFor(e).getBoundingClientRect();
+  mutate(next => { const item = [...next.elements,...next.sections].find(item => item.id === e.id);item.order=Number(event.target.value);if(next.sections.some(s=>s.id===item.id))return;if(!isFree(item)){item.free=true;item.layoutMode='free';item.layouts[device]={x:round((rect.left-anchor.left)/anchor.width*100),y:round((rect.top-anchor.top)/anchor.height*100),width:round(rect.width/anchor.width*100),height:round(rect.height/Math.max(1,anchor.height)*100)};} });
   notice("ترتیب ساختاری اعمال شد؛ چیدمان موبایل را هم بررسی کنید.");
 };
 document.querySelectorAll("[data-add]").forEach(button => button.onclick = () => add(button.dataset.add));
@@ -420,8 +427,8 @@ $("#layers").onclick = event => {
 document.querySelectorAll("[data-device]").forEach(button => button.onclick = () => {
   cancelGesture(); device = button.dataset.device;
   document.querySelectorAll("[data-device]").forEach(b => b.setAttribute("aria-pressed", b === button));
-  $("#frame-wrap").style.width = device === "mobile" ? "390px" : "1280px";
-  $("#device-label").textContent = device === "mobile" ? "موبایل · ۳۹۰ × ۸۰۰" : "دسکتاپ · ۱۲۸۰ × ۸۰۰";
+  $("#frame-wrap").style.width = `${({desktop:1440,tablet:768,mobile:390})[device]}px`;
+  $("#device-label").textContent = ({desktop:'دسکتاپ · ۱۴۴۰ × ۸۰۰',tablet:'تبلت · ۷۶۸ × ۸۰۰',mobile:'موبایل · ۳۹۰ × ۸۰۰'})[device];
   requestAnimationFrame(() => { render(); properties(); });
 });
 $("#preview").onclick = () => {
@@ -438,17 +445,25 @@ for (const key of ["text", "alt", "href"]) $("#" + key).addEventListener("input"
   const value = event.target.value;
   if (key === "href" && !safeLink(value)) { event.target.setCustomValidity("آدرس معتبر سایت یا https وارد کنید."); event.target.reportValidity(); return; }
   event.target.setCustomValidity("");
-  mutate(next => next.elements.find(e => e.id === selected[0]).content[key] = value, false);
+  mutate(next => {const e=next.elements.find(e=>e.id===selected[0]);if(!e||e.locked)return;e.content[key]=value;if(key==='text')delete e.content.runs;}, false);
 });
 for (const key of ["x", "y", "width", "height"]) $("#" + key).addEventListener("change", event => {
   if (!selectedElement() || !event.target.checkValidity() || event.target.value === "") { properties(); return; }
-  mutate(next => { const e = next.elements.find(e => e.id === selected[0]); e.layouts[device][key] = Number(event.target.value); });
+  mutate(next => { const e = [...next.elements,...next.sections].find(e => e.id === selected[0]);if(!e||e.locked)return;e.layouts[device][key] = Number(event.target.value);if(['width','height'].includes(key))e.layouts[device][key+'Unit']=$('#'+key+'-unit').value; });
 });
+for(const dimension of ['width','height'])$('#'+dimension+'-unit').onchange=event=>{
+  const e=selectedElement();if(!e)return;
+  const unit=event.target.value,rect=unitFor(e.id).getBoundingClientRect(),parent=parentFor(e).getBoundingClientRect();
+  const reference=unit==='px'?1:unit==='%'?parent[dimension]/100:(dimension==='width'?doc.defaultView.innerWidth:doc.defaultView.innerHeight)/100;
+  const value=round(rect[dimension]/Math.max(.001,reference));
+  if(value<.1||value>(unit==='%'?300:4000)){properties();return notice('اندازه برای این واحد از محدودهٔ مجاز خارج است؛ ابتدا ابعاد را تغییر دهید.');}
+  mutate(next=>{const target=next.elements.find(item=>item.id===e.id);if(target){target.layouts[device][dimension]=value;target.layouts[device][dimension+'Unit']=unit;}});
+};
 for (const key of ["fontSize", "color", "textAlign", "z"]) $("#" + key).addEventListener("change", event => {
   if (!selectedElement() || !event.target.checkValidity()) return;
-  mutate(next => { const e = next.elements.find(e => e.id === selected[0]); if (key === "z") e.z = Number(event.target.value); else e.style[key] = key === "fontSize" ? Number(event.target.value) : event.target.value; });
+  mutate(next => { const e = [...next.elements,...next.sections].find(e => e.id === selected[0]);if(!e||e.locked)return;if(key==='z')e.z=Number(event.target.value);else {const style=device==='desktop'?e.style:(e.responsiveStyles[device]||={});style[key]=key==='fontSize'?Number(event.target.value):event.target.value;} });
 });
-$("#reset-layout").onclick = () => mutate(next => { const e = next.elements.find(e => e.id === selected[0]); if (e) e.layouts[device] = {}; });
+$("#reset-layout").onclick = () => mutate(next => { const e = [...next.elements,...next.sections].find(e => e.id === selected[0]); if (e&&!e.locked) e.layouts[device] = {}; });
 $("#image-library").onchange = event => { if (safeImage(event.target.value)) mutate(next => { const content = next.elements.find(e => e.id === selected[0]).content; content.src = event.target.value; delete content.variants; delete content.width; delete content.height; }); };
 $("#upload").onchange = event => { upload(event.target.files[0]).catch(error => notice(error.message)); event.target.value = ""; };
 $("#export").onclick = () => download(encodeDraft(history));
@@ -486,10 +501,12 @@ function launch() {
   frame.srcdoc = base.html;
   clearInterval(sessionTimer); sessionTimer = setInterval(checkSession, 45_000);
 }
-async function loadPage(path, ref = "", fresh = false) {
+async function loadPage(path, ref = "", fresh = false, prepared = null) {
   if (publishing) return;
   if (history && storageKey) await save();
-  const next = await api(`/builder?path=${encodeURIComponent(path)}${ref ? `&ref=${ref}` : ""}`);
+  frame.hidden=true;$('.workspace').inert=true;
+  let next=prepared;
+  if(!next){try{next=await api(`/builder?path=${encodeURIComponent(path)}${ref ? `&ref=${ref}` : ""}`);}catch(error){if(error.status===404&&!ref)next=await dbRecord(`prepared:${user}:${path}`);if(!next){frame.hidden=false;$('.workspace').inert=false;throw error;}}}
   base = next; currentPath = path; activeRef = ref;
   const address = new URL(location.href); address.searchParams.set("path",path);
   if (ref) address.searchParams.set("ref",ref); else address.searchParams.delete("ref");
@@ -499,6 +516,7 @@ async function loadPage(path, ref = "", fresh = false) {
   document.body.classList.remove("preview"); $("#preview").setAttribute("aria-pressed","false"); $("#preview").textContent = "پیش‌نمایش";
   $("#publication-status").textContent = ""; $("#check-publication").hidden = true; $("#continue-editing").hidden = true;
   $("#publish").disabled = sessionInfo.user.role !== "admin";
+  if(![...$('#page-selector').options].some(o=>o.value===path)){const option=document.createElement('option');option.value=path;option.textContent=`پیش‌نویس · ${path.slice(7)}`;$('#page-selector').append(option);}
   $("#page-selector").value = path;
   $("#page-heading").textContent = `${base.model.base.title}${ref ? " — بازگردانی در پیش‌نویس" : ""}`;
   for (const selector of ["#anchor","#move-anchor"]) {
@@ -509,7 +527,7 @@ async function loadPage(path, ref = "", fresh = false) {
   history = new History(base.model);
   const saved = await readDraft();
   if (saved && !fresh) {
-    try { history = decodeDraft(saved, base.model, base.anchors); $("#save-status").textContent = "پیش‌نویس و تاریخچه قبلی بازیابی شدند"; }
+    try { history = decodeDraft(saved, base.model, base.anchors);if(JSON.parse(saved).version===1){await dbRecord(`archive:${storageKey}:${Date.now()}`,saved);notice('پیش‌نویس نسخهٔ ۱ و همهٔ واگردها مهاجرت کردند؛ فایل اصلی در آرشیو حفظ شد.');} $("#save-status").textContent = "پیش‌نویس و تاریخچه قبلی بازیابی شدند"; }
     catch {
       $("#gate-message").textContent = "نسخه پایه صفحه تغییر کرده یا پیش‌نویس ناسازگار است. ابتدا نسخه قبلی را دانلود کنید. شروع تازه فقط پیش‌نویس این مرورگر را جایگزین می‌کند.";
       const prior = await dbRecord(`request:${storageKey}`);
@@ -529,7 +547,7 @@ async function loadPage(path, ref = "", fresh = false) {
       return;
     }
   }
-  const revisions = await api(`/history?path=${encodeURIComponent(path)}`);
+  const revisions = base.model.base.creation?{entries:[]}:await api(`/history?path=${encodeURIComponent(path)}`).catch(()=>({entries:[]}));
   $("#revisions").replaceChildren();
   for (const entry of revisions.entries) { const option = document.createElement("option"); option.value = entry.sha; option.textContent = `${entry.date?.slice(0,10) || ""} ${entry.message || "نسخه قبلی"}`; $("#revisions").append(option); }
   $("#load-revision").disabled = !revisions.entries.length;
@@ -545,7 +563,8 @@ async function boot() {
   for (const image of library.images) { const option = document.createElement("option"); option.value = image.url; option.textContent = image.path.split("/").slice(-2).join("/"); $("#image-library").append(option); }
   const requested = new URL(location.href).searchParams.get("path");
   const ref = new URL(location.href).searchParams.get("ref") || "";
-  await loadPage(library.pages.some(p => p.path === requested) ? requested : "public/index.html", /^[a-f0-9]{40}$/.test(ref) ? ref : "");
+  const prepared=requested?await dbRecord(`prepared:${user}:${requested}`):null;
+  await loadPage(library.pages.some(p => p.path === requested)||prepared ? requested : "public/index.html", /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(ref) ? ref : "");
 }
 
 function dbRecord(key, value) {
@@ -574,7 +593,9 @@ async function status() {
   if (publication.result.mode === "local") { $("#publication-status").textContent = "در فایل‌های محلی ثبت شد؛ هیچ استقرار آنلاینی انجام نشده است."; return; }
   const result = await api(`/builder/status?sha=${encodeURIComponent(publication.result.sha)}`);
   const labels = {success:"گزارش موفق استقرار production از Cloudflare در GitHub تأیید شد.",failure:"استقرار شکست خورده است؛ ثبت GitHub محفوظ است.",error:"خطای استقرار گزارش شده است.",pending:"استقرار در انتظار است.",queued:"استقرار در صف است.",in_progress:"استقرار در حال اجراست.",inactive:"این استقرار دیگر فعال نیست.",superseded:"نسخه جدیدتری در شاخه ثبت شده است؛ این وضعیت نسخه جاری سایت را تأیید نمی‌کند.",unknown:"استقرار قابل تأیید نیست؛ وضعیت Cloudflare را بررسی کنید."};
-  $("#publication-status").textContent = `${result.commit === "committed" ? "ثبت GitHub تأیید شد." : "تأیید دوباره commit در دسترس نیست."} ${labels[result.deployment] || labels.unknown}`;
+  const stages={commit_created:'مرحله: ثبت commit.',deployment_started:'مرحله: استقرار آغاز شده.',deployment_verified:'مرحله: استقرار تأییدشده.',deployment_failed:'مرحله: خطای استقرار.',unverified:'مرحله: نیازمند بررسی.'};
+  const checked=Number.isFinite(Date.parse(result.checkedAt))?` آخرین بررسی: ${new Date(result.checkedAt).toLocaleTimeString('fa-IR')}.`:'';
+  $("#publication-status").textContent = `${result.commit === "committed" ? "ثبت GitHub تأیید شد." : "تأیید دوباره commit در دسترس نیست."} ${stages[result.stage]||''} ${labels[result.deployment] || labels.unknown}${checked}`;
 }
 $("#page-selector").onchange = event => loadPage(event.target.value).catch(error => { $("#page-selector").value = currentPath; notice(error.message); });
 $("#load-revision").onclick = () => loadPage(currentPath,$("#revisions").value).catch(error => notice(error.message));
@@ -612,6 +633,7 @@ $("#publish-confirm").onclick = async () => {
     publishRequest = prior?.fingerprint === digest ? prior : {requestId:crypto.randomUUID(),fingerprint:digest};
     await dbRecord(key,publishRequest);
     const result = await api("/builder/publish",{requestId:publishRequest.requestId,model:payload});
+    if(payload.base.creation)await dbRecord(`prepared:${user}:${currentPath}`,null);
     publication = {...publishRequest,result}; await dbRecord(key,publication);
     await dbRecord(`archive:${storageKey}:${Date.now()}`,encodeDraft(history));
     preview = true; document.body.classList.add("preview"); $("#preview").setAttribute("aria-pressed","true");
@@ -621,4 +643,17 @@ $("#publish-confirm").onclick = async () => {
   } catch (error) { $("#publication-status").textContent = `${error.message} پیش‌نویس و تاریخچه حفظ شدند.`; notice(error.message); }
   finally { publishing = false; $(".workspace").inert = false; $("#publish").disabled = !!publication?.result || sessionInfo.user.role !== "admin"; updateHistory(); properties(); }
 };
+async function refreshLibrary(){library=await api('/library');const previous=$('#page-selector').value;$('#page-selector').replaceChildren();for(const page of library.pages){const option=document.createElement('option');option.value=page.path;option.textContent=`${page.language.toUpperCase()} · ${page.route}`;$('#page-selector').append(option);}$('#page-selector').value=previous;return library;}
+function blockLibrary(){const query=$('#block-search').value.trim().toLowerCase(),holder=$('#block-list');holder.replaceChildren();for(const block of BLOCKS.filter(b=>[b.label,b.category,b.description,b.id].join(' ').toLowerCase().includes(query))){const button=document.createElement('button');button.dataset.block=block.id;button.draggable=true;const visual=document.createElement('span');visual.className='block-preview';visual.textContent=block.preview;button.append(visual,document.createTextNode(block.label));const small=document.createElement('small');small.textContent=block.description;button.append(small);button.onclick=()=>insertBlock(block.id);button.ondragstart=event=>{event.dataTransfer.setData('text/x-baran-block',block.id);event.dataTransfer.effectAllowed='copy';};holder.append(button);}}
+$('#block-search').oninput=blockLibrary;blockLibrary();
+$('#new-section').onclick=()=>insertBlock('section','page');
+for(const [key,delta]of [['#section-up',-1],['#section-down',1]])$(key).onclick=()=>{const e=selectedElement();if(!e||e.protected)return;mutate(next=>{const sections=next.sections.filter(s=>!s.protected&&!s.deleted).sort((a,b)=>a.order-b.order),i=sections.findIndex(s=>s.id===e.id),other=sections[i+delta];if(other){const a=sections[i];[a.order,other.order]=[other.order,a.order];}});};
+for(const key of ['bold','italic','underline'])$('#rich-'+key).onclick=()=>{const input=$('#text'),start=input.selectionStart,end=input.selectionEnd;mutate(next=>{const e=next.elements.find(e=>e.id===selected[0]);if(!e||e.source||e.locked)return;const text=e.content.text,a=start===end?0:start,b=start===end?text.length:end;e.content.runs=[{text:text.slice(0,a)},{text:text.slice(a,b),[key]:true},{text:text.slice(b)}].filter(r=>r.text);});};
+$('#public-preview').onclick=async()=>{if(!history||publishing)return;try{$('#public-preview').disabled=true;const result=await api('/builder/preview',{model:clone(model())});$('#output-frame').srcdoc=result.html;$('#output-dialog').showModal();}catch(error){notice(error.message);}finally{$('#public-preview').disabled=false;}};
+$('#output-close').onclick=()=>{$('#output-dialog').close();$('#output-frame').srcdoc='';};
+$('#guides').onchange=()=>drawSelection();
+const context={api,getModel:()=>history?.present,getSelected:()=>selected,getNode:nodeFor,getElement:element,getDevice:()=>device,getBase:()=>base,getPath:()=>currentPath,getSession:()=>sessionInfo,getUser:()=>user,mutate,select,notice,onUpdate:fn=>updateHooks.push(fn),dbRecord,save,loadPage,refreshLibrary,openPrepared:async prepared=>{const path=prepared.model.base.path;await dbRecord(`prepared:${user}:${path}`,prepared);await loadPage(path,'',true,prepared);await save();}};
+installProfessionalControls(context);
+$('#properties').after($('#professional-controls'));
+installPagesUI(context);
 boot().catch(error => { $("#gate-message").textContent = error.message; });

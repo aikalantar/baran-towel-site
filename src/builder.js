@@ -1,7 +1,9 @@
 import { parseHTML } from "linkedom";
 import { describePage, pagePath, CMSFailure, SITE } from "./content.js";
-import { validModel, clone } from "../public/admin/builder/model.js";
+import { validModel, clone, migrateModel, stablePageID, emptyLayout } from "../public/admin/builder/model.js";
 import { layoutCSS, isFree } from "../public/admin/builder/layout.js";
+import { renderBlockNode } from "../public/admin/builder/blocks.js";
+import { readPageMetadata, applyPageSEO, newPageSource, publicationChanges } from "./pages.js";
 import { digest } from "./auth.js";
 import { prepareImages } from "./builder-images.js";
 
@@ -20,6 +22,8 @@ export function builderPage(html, revision, path = "public/index.html", editing 
   let stored = {};
   const stateNode = document.querySelector("#builder-state");
   try { stored = stateNode ? JSON.parse(stateNode.textContent) : {}; } catch { throw new CMSFailure("داده چیدمان این صفحه نیاز به بررسی دارد."); }
+  const storedNodes = new Map((stored.schemaVersion === 2 ? stored.elements || [] : []).map(e=>[e.id,e]));
+  const settings = id => storedNodes.get(id) || stored[id] || {};
   const elements = [];
   const anchors = [];
   if (!document.querySelector("main")) throw new CMSFailure("ساختار این صفحه با ویرایشگر سازگار نیست.",422);
@@ -27,7 +31,7 @@ export function builderPage(html, revision, path = "public/index.html", editing 
     const id = node.getAttribute("data-builder-anchor") || `section-${node.id || index}`;
     if (!/^[a-zA-Z0-9_-]{1,100}$/.test(id) || anchors.some(a => a.id === id)) throw new CMSFailure("شناسه بخش تکراری یا نامعتبر است.",422);
     node.setAttribute("data-builder-anchor", id);
-    anchors.push({ id, label: node.querySelector("h1,h2,h3")?.textContent || node.getAttribute("aria-label") || (node.localName === "header" ? "سربرگ" : node.localName === "footer" ? "پاورقی" : `بخش ${index}`) });
+    anchors.push({ id, label: node.querySelector("h1,h2,h3")?.textContent || node.getAttribute("aria-label") || (node.localName === "header" ? "سربرگ" : node.localName === "footer" ? "پاورقی" : `بخش ${index}`), generated:storedNodes.get(id)?.source === null, protected:node.matches('header.site-header,footer') });
   }
   const groups = new Map();
   for (const field of fields.filter(f => ["text", "image"].includes(f.kind))) {
@@ -39,6 +43,7 @@ export function builderPage(html, revision, path = "public/index.html", editing 
     const anchor = node?.closest("[data-builder-anchor]");
     if (!node || !anchor || node.closest("svg, .skip-link")) continue;
     const id = node.getAttribute("data-builder-id") || stableID(selector);
+    if(storedNodes.has(id) && !storedNodes.get(id).source)continue;
     if (!/^(base-[a-z0-9]+|new-[a-zA-Z0-9-]+)$/.test(id)) throw new CMSFailure("شناسه عنصر معتبر نیست.",422);
     if (elements.some(el => el.id === id)) throw new Error("Duplicate builder ID");
     const image = entries.find(f => f.kind === "image");
@@ -51,15 +56,27 @@ export function builderPage(html, revision, path = "public/index.html", editing 
       content: image ? { src: image.value, alt: image.alt } : {
         text: entries.map(f => f.value).join(" "), ...(node.localName === "a" ? { href: node.getAttribute("href") } : {}),
       },
-      layouts: stored[id]?.layouts || { desktop: {}, mobile: {} }, style: stored[id]?.style || {}, z: stored[id]?.z ?? null, deleted: false,
-      ...(stored[id]?.free != null ? {free:stored[id].free} : {}), ...(stored[id]?.order != null ? {order:stored[id].order} : {}),
+      layouts: settings(id).layouts || { desktop: {}, mobile: {} }, style: settings(id).style || {}, z: settings(id).z ?? null, deleted: false,
+      ...(settings(id).free != null ? {free:settings(id).free} : {}), ...(settings(id).order != null ? {order:settings(id).order} : {}),
     });
   }
   for (const e of elements) {
     const node = document.querySelector(`[data-builder-id="${e.id}"]`);
     e.movable = !node.querySelector("[data-builder-id]") && !node.matches("li,dt,dd,summary,td,th") && !node.closest(".product-card,.model-index,details,table");
   }
-  const model = {schemaVersion:1,base:{path,revision,title:document.title,idVersion:1},elements};
+  const model = migrateModel({schemaVersion:1,base:{path,revision,title:document.title,idVersion:1},elements},null,anchors.filter(a=>!a.generated));
+  model.page = {...readPageMetadata(document,path),id:document.querySelector('meta[name="builder-page-id"]')?.getAttribute('content') || stored.page?.id || stablePageID(path)};
+  model.sections = anchors.filter(a=>!a.generated).map((a,i)=>({id:a.id,label:a.label,type:'container',kind:'section',tag:'section',content:{text:a.label},parentId:'page',order:i,deleted:false,locked:false,layoutMode:'flow',layouts:emptyLayout(),style:{},responsiveStyles:{tablet:{},mobile:{}},...(stored.sections?.find(s=>s.id===a.id)||{}),source:{anchor:a.id},protected:a.protected}));
+  for(const e of model.elements){const s=storedNodes.get(e.id);if(s)for(const key of ['parentId','layoutMode','responsiveStyles','responsiveInheritance','locked'])if(s[key]!=null)e[key]=clone(s[key]);}
+  for(const entry of storedNodes.values())if(!entry.source){
+    if(!/^new-[a-zA-Z0-9-]+$/.test(entry.id))throw new CMSFailure('شناسه بلوک ذخیره‌شده معتبر نیست.');
+    const node=document.querySelector(`[data-builder-id="${entry.id}"]`);if(!node)throw new CMSFailure('بلوک ذخیره‌شده در HTML پیدا نشد؛ داده حذف نشده است.',422);
+    const e=clone(entry);e.deleted=false;e.source=null;
+    if(['text','heading','button'].includes(e.type)&&node.textContent!==e.content.text){e.content.text=node.textContent;delete e.content.runs;}
+    if(e.type==='image'){e.content.src=node.getAttribute('src');e.content.alt=node.getAttribute('alt')||'';}
+    model.elements.push(e);
+  }
+  model.warningsDismissed=stored.warningsDismissed || [];
   if (!anchors.length || !elements.length || !validModel(model,model,anchors)) throw new CMSFailure("ساختار این صفحه برای ویرایش ایمن پشتیبانی نمی‌شود.",422);
   if (!editing) return { document, anchors, model };
   document.querySelector("#builder-layout")?.remove();
@@ -115,7 +132,10 @@ function changePicture(document, node, e, original) {
 export async function publishBuilder(repo, body, user, localMode) {
   const path = pagePath(body?.model?.base?.path);
   if (!/^[a-zA-Z0-9-]{16,80}$/.test(body.requestId || "")) throw new CMSFailure("شناسه درخواست انتشار معتبر نیست.");
-  const head = await repo.head(), file = await repo.read(path,head);
+  const head = await repo.head();
+  let file;
+  try { file=await repo.read(path,head); }
+  catch(error){if(error.status!==404||!body.model.base.creation)throw error;file=await newPageSource(repo,body.model,head);}
   const fingerprint = await digest(JSON.stringify(body.model));
   // This receipt makes a lost-response retry idempotent without a second commit.
   const receipt = parseHTML(file.content).document;
@@ -125,43 +145,59 @@ export async function publishBuilder(repo, body, user, localMode) {
   }
   if (file.sha !== body.model.base.revision) throw new CMSFailure("نسخه صفحه تغییر کرده است؛ پیش‌نویس محفوظ است. نسخه جدید را بررسی کنید.",409);
   const restore = body.model.base.restoreCommit;
-  if (restore && !/^[a-f0-9]{40}$/.test(restore)) throw new CMSFailure("نسخه بازگردانی معتبر نیست.");
+  if (restore && !(localMode?/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/:/^[a-f0-9]{40}$/).test(restore)) throw new CMSFailure("نسخه بازگردانی معتبر نیست.");
   const source = restore ? await repo.read(path,restore) : file;
   const base = builderPage(source.content,file.sha,path,false);
   if (restore) base.model.base.restoreCommit = restore;
-  if (!validModel(body.model,base.model,base.anchors)) throw new CMSFailure("مدل صفحه یا جابه‌جایی عناصر معتبر نیست.");
-  const model = clone(body.model), original = new Map(base.model.elements.map(e => [e.id,e]));
+  if(body.model.base.creation){base.model.base.creation=clone(body.model.base.creation);base.model.page=clone(body.model.base.creation.page);}
+  const model=migrateModel(body.model,base.model,base.anchors);
+  if (!validModel(model,base.model,base.anchors)) throw new CMSFailure("مدل صفحه، سبک یا ساختار والدها معتبر نیست؛ پیش‌نویس محفوظ است.");
+  const original = new Map(base.model.elements.map(e => [e.id,e]));
   for (const e of model.elements) e.imageChanged = e.type === "image" && e.content.src !== original.get(e.id)?.content.src;
   const tree = await repo.tree(head);
+  const available=new Set(tree.map(e=>e.path));
+  for(const e of [...model.sections,...model.elements])for(const style of [e.style,...Object.values(e.responsiveStyles||{})])if(style.backgroundImage&&!available.has('public'+style.backgroundImage))throw new CMSFailure('تصویر پس‌زمینه در کتابخانه موجود نیست.');
   const imageChanges = await prepareImages(model,tree,repo,head);
   const document = base.document, nodes = new Map(base.model.elements.map(e => [e.id,document.querySelector(`[data-builder-id="${e.id}"]`)]));
+  const all=new Map([...model.sections,...model.elements].map(e=>[e.id,e]));
+  const alive=e=>{if(e.deleted)return false;let p=e.parentId;while(p&&p!=='page'){const parent=all.get(p);if(parent?.deleted)return false;p=parent?.parentId;}return true;};
+  const parentFor=e=>e.parentId==='page'?document.querySelector('main'):nodes.get(e.parentId)||document.querySelector(`[data-builder-anchor="${e.parentId||e.anchor}"]`);
+  // Protection comes from the trusted original DOM, never the imported model.
+  const protectedSections=new Set(base.model.sections.filter(s=>s.protected).map(s=>s.id));
+  for(const s of model.sections){if(protectedSections.has(s.id))continue;const n=document.querySelector(`[data-builder-anchor="${s.id}"]`);if(s.deleted)n?.remove();else if(n)document.querySelector('main').append(n);}
+  for(const s of [...model.sections].filter(s=>!s.deleted&&!protectedSections.has(s.id)).sort((a,b)=>a.order-b.order)){const n=document.querySelector(`[data-builder-anchor="${s.id}"]`);if(n)document.querySelector('main').append(n);}
   for (const e of model.elements) {
     let node = nodes.get(e.id);
-    if (!node && !e.deleted) { node = document.createElement(({text:"p",heading:"h2",button:"a",image:"img"})[e.type]); node.setAttribute("data-builder-id",e.id); node.setAttribute("data-builder-created",""); node.setAttribute("data-builder-type",e.type); nodes.set(e.id,node); }
+    if (!node && alive(e)) { node=renderBlockNode(document,e);nodes.set(e.id,node); }
     if (!node) continue;
     const unit = node.closest("picture") || node;
-    if (e.deleted) { unit.remove(); continue; }
+    if (!alive(e)) { unit.remove(); continue; }
     if (e.type === "image") changePicture(document,node,e,original.get(e.id));
     else if (e.source) e.source.textNodes.forEach((index,i) => { const text = node.childNodes[index]; if (text?.nodeType === 3) text.textContent = i ? "" : e.content.text; });
-    else node.textContent = e.content.text;
+    else if(['text','heading','button'].includes(e.type)){const replacement=renderBlockNode(document,e);node.replaceChildren(...replacement.childNodes);}
     if (e.content.href != null) node.setAttribute("href",e.content.href);
-    if (isFree(e)) { const anchor = document.querySelector(`[data-builder-anchor="${e.anchor}"]`); anchor.append(unit); }
+    unit.setAttribute('data-builder-parent',e.parentId||e.anchor);
+    if(e.type==='container'&&e.parentId==='page')node.setAttribute('data-builder-anchor',e.id);
     if (e.type !== "image" && original.get(e.id)) replaceSchema(document,original.get(e.id).content.text,e.content.text);
     if (e.z != null || Object.values(e.layouts).some(l => Object.keys(l).length)) unit.setAttribute("data-builder-geometry","");
   }
-  for (const anchor of base.anchors) for (const e of model.elements.filter(e => !e.deleted && isFree(e) && e.anchor === anchor.id).sort((a,b)=>(a.order||0)-(b.order||0))) {
-    const node = nodes.get(e.id); document.querySelector(`[data-builder-anchor="${anchor.id}"]`).append(node.closest("picture") || node);
+  for(const e of model.elements.filter(alive).sort((a,b)=>(a.order||0)-(b.order||0))){
+    const node=nodes.get(e.id),orig=original.get(e.id);
+    if(!e.source||isFree(e)||e.parentId!==orig?.parentId)parentFor(e).append(node.closest('picture')||node);
   }
   if (document.querySelectorAll("main h1").length !== 1) throw new CMSFailure("صفحه باید دقیقاً یک عنوان اصلی H1 داشته باشد.");
   document.querySelector("#builder-layout")?.remove(); document.querySelector("#builder-state")?.remove();
-  const style = document.createElement("style"); style.id = "builder-layout"; style.textContent = layoutCSS(model.elements); document.head.append(style);
+  if(JSON.stringify(model.page)!==JSON.stringify(base.model.page)||model.base.creation)applyPageSEO(document,model);
+  const style = document.createElement("style"); style.id = "builder-layout"; style.textContent = layoutCSS([...model.sections,...model.elements]); document.head.append(style);
   const state = document.createElement("script"); state.id = "builder-state"; state.type = "application/json";
-  state.textContent = JSON.stringify(Object.fromEntries(model.elements.filter(e => !e.deleted).map(e => [e.id,{layouts:e.layouts,style:e.style,z:e.z,free:isFree(e),order:e.order||0}]))).replace(/</g,"\\u003c"); document.head.append(state);
+  state.textContent = JSON.stringify({schemaVersion:2,page:model.page,sections:model.sections.filter(e=>!e.deleted),elements:model.elements.filter(alive).map(e=>({...e,source:e.source||null})),warningsDismissed:model.warningsDismissed}).replace(/</g,"\\u003c"); document.head.append(state);
   if (!document.querySelector('script[src="/builder-layout.js"]')) { const runtime = document.createElement("script"); runtime.src = "/builder-layout.js"; runtime.setAttribute("defer",""); document.head.append(runtime); }
+  if(model.elements.some(e=>alive(e)&&e.kind==='gallery')&&!document.querySelector('script[src="/builder-blocks.js"]')){const script=document.createElement('script');script.src='/builder-blocks.js';script.setAttribute('defer','');document.head.append(script);}
   metadata(document,"builder-request",body.requestId); metadata(document,"builder-fingerprint",fingerprint);
   const html = document.toString();
-  const changes = [{path,content:html},...imageChanges];
-  if (tree.some(entry => entry.path === "public/sitemap.xml")) {
+  const managedChanges=await publicationChanges(repo,head,model,html);
+  const changes = [{path,content:managedChanges.pageHTML||html},...imageChanges,...managedChanges];
+  if (!managedChanges.some(c=>c.path==='public/sitemap.xml')&&tree.some(entry => entry.path === "public/sitemap.xml")) {
     const sitemap = await repo.read("public/sitemap.xml",head), route = "/"+path.slice(7).replace(/index\.html$/,"");
     const location = (SITE+route).replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
     const updated = sitemap.content.replace(new RegExp(`(<loc>${location}</loc>\\s*<lastmod>)[^<]+(</lastmod>)`),`$1${new Date().toISOString().slice(0,10)}$2`);
@@ -170,4 +206,17 @@ export async function publishBuilder(repo, body, user, localMode) {
   const result = await repo.commit(head,changes,`content: visual builder ${path.slice(7)} (${user.username})`);
   // Never fetch the branch again here: another writer may already have advanced it.
   return {...result,path,publication:{commit:localMode?"local":"committed",deployment:localMode?"not_applicable":"unknown"}};
+}
+
+// The same validator/renderer produces a public preview, with commit intercepted.
+// No repository ref, static page, registry or asset is written by this endpoint.
+export async function previewBuilder(repo,model,user){
+ let captured=[];
+ const previewRepo=Object.create(repo);
+ previewRepo.commit=async(head,changes)=>{captured=changes;return {sha:head,mode:'preview'};};
+ await publishBuilder(previewRepo,{model,requestId:crypto.randomUUID()},user,true);
+ let html=captured.find(c=>c.path===model.base.path)?.content;
+ if(typeof html!=='string')throw new CMSFailure('ساخت پیش‌نمایش ممکن نشد.');
+ for(const file of captured.filter(c=>c.encoding==='base64')){const url='/'+file.path.slice(7),mime=file.path.endsWith('.png')?'image/png':file.path.endsWith('.jpg')?'image/jpeg':'image/webp';html=html.split(url).join(`data:${mime};base64,${file.content}`);}
+ return {html,path:model.base.path,draft:true};
 }

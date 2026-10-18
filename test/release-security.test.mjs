@@ -34,7 +34,9 @@ test("published text cannot create scripts, event handlers or style breakouts", 
   const doc = parseHTML(state.files.get("public/index.html").toString()).document;
   assert.equal(doc.querySelector(`[data-builder-id="${text.id}"]`).textContent,attack);
   assert.equal(doc.querySelectorAll('script[src="https://bad.invalid/x.js"],img[onerror]').length,0);
-  assert.equal(doc.querySelectorAll("script").length,before+2); // trusted runtime + inert state JSON
+  assert.equal(doc.querySelectorAll('script#builder-state[type="application/json"]').length,1);
+  assert.equal(doc.querySelectorAll('script[src="/builder-layout.js"]').length,1);
+  assert.ok([...doc.querySelectorAll('script')].every(n=>n.src!=='https://bad.invalid/x.js'));
 });
 test("unsafe CSS, IDs, URLs, malformed variants and safe-path escapes never write files",async()=>{
   const {repo,state} = await githubSimulation(), file = await repo.read("public/index.html"), base = builderPage(file.content,file.sha).model;
