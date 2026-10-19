@@ -33,7 +33,7 @@
     },
     {
       "path": "public/cms-stability-canary-20261019-t11/index.html",
-      "status": "published",
+      "status": "deleted",
       "managed": true,
       "page": {
         "id": "page-e13fe6ae-95cf-4ccd-a84d-d9abd01e5af3",
@@ -53,8 +53,13 @@
           "order": 0
         }
       },
-      "updated": "2026-10-19T12:39:03.346Z",
-      "menuExplicit": false
+      "updated": "2026-10-19T12:42:40.099Z",
+      "menuExplicit": false,
+      "recovery": {
+        "path": "public/cms-stability-canary-20261019-t11/index.html",
+        "revision": "5c757dbd9d37fdbbc4602494d9c5d5d9a354dee3",
+        "fileSha": "f4039dbbb8c375c53aa7223e85b59ddd50d90b1d"
+      }
     }
   ],
   "requests": [
@@ -75,6 +80,12 @@
       "fingerprint": "6ae759c1e4efbcd0a197e4fb457d7e64074f6819461c497296e7eada966a7f73",
       "path": "public/cms-stability-canary-20261019-t11/index.html",
       "action": "restore"
+    },
+    {
+      "id": "0f725d71-0ce0-49a7-82ca-70399d99ad46",
+      "fingerprint": "518caa47a5985814cfe75b13a456568010b4c505b1bc402a0c8dd94f07288eb9",
+      "path": "public/cms-stability-canary-20261019-t11/index.html",
+      "action": "delete"
     }
   ]
 }
