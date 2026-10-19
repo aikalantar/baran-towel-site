@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "pages": [
+    {
+      "path": "public/v2-release-canary-20261019-0335/index.html",
+      "status": "published",
+      "managed": true,
+      "page": {
+        "id": "page-abf95d77-b500-48ff-a21a-bb03b2c22e1f",
+        "title": "آزمون موقت انتشار Builder V2",
+        "description": "صفحهٔ موقت کنترل انتشار؛ پس از آزمون حذف می‌شود.",
+        "language": "fa",
+        "direction": "rtl",
+        "canonical": "https://luxtowelco.com/v2-release-canary-20261019-0335/",
+        "robots": "noindex",
+        "visibility": "unlisted",
+        "ogTitle": "آزمون موقت انتشار Builder V2",
+        "ogDescription": "صفحهٔ موقت کنترل انتشار؛ پس از آزمون حذف می‌شود.",
+        "ogImage": "",
+        "menu": {
+          "included": false,
+          "label": "آزمون موقت انتشار Builder V2",
+          "order": 0
+        }
+      },
+      "updated": "2026-10-19T03:37:14.231Z",
+      "menuExplicit": false
+    }
+  ],
+  "requests": []
+}
