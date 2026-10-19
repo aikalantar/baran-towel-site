@@ -1,10 +1,12 @@
 import { CMSFailure } from "./content.js";
+import {cloudflareDeployment,providerURL} from './deployment.js';
 
 export class GitHubRepository {
   constructor(env) {
     this.repository = env.CMS_REPOSITORY;
     this.branch = env.CMS_BRANCH || "main";
     this.token = env.CMS_GITHUB_TOKEN;
+    this.deploymentConfig = {CMS_CF_ACCOUNT_ID:env.CMS_CF_ACCOUNT_ID,CMS_CF_WORKER_NAME:env.CMS_CF_WORKER_NAME,CMS_CF_API_TOKEN:env.CMS_CF_API_TOKEN};
     if (
       !/^[\w.-]+\/[\w.-]+$/.test(this.repository) ||
       !/^[\w.-]+$/.test(this.branch)
@@ -95,9 +97,15 @@ export class GitHubRepository {
       result.commit = "committed";
       result.stage = "commit_created";
       if ((await this.head()) !== sha) return {...result,deployment:"superseded",reason:"newer_commit_exists"};
+      const cloudflare=await cloudflareDeployment(this.deploymentConfig,sha,this.repository,this.branch);
+      if(cloudflare?.deployment==='success') {
+        if((await this.head())!==sha)return {...result,deployment:'superseded',reason:'newer_commit_exists'};
+        return {...result,...cloudflare};
+      }
+      if(cloudflare)return {...result,...cloudflare};
       const trusted = actor => actor?.type === "Bot" && ["cloudflare-workers-and-pages[bot]","cloudflare-pages[bot]"].includes(actor.login);
       const deployments = await this.call("deployments?per_page=100");
-      const production = deployments.find(d => d.production_environment === true && trusted(d.creator));
+      const production = deployments.filter(d => d.production_environment === true && trusted(d.creator)).sort((a,b)=>Date.parse(b.created_at||0)-Date.parse(a.created_at||0))[0];
       if (!production || production.sha !== sha) return {...result,reason:"provider_evidence_unavailable"};
       const statuses = await this.call(`deployments/${production.id}/statuses?per_page=1`);
       const latest = statuses[0];
@@ -105,7 +113,8 @@ export class GitHubRepository {
       result.deployment = ["success","failure","error","inactive","queued","pending","in_progress"].includes(latest.state) ? latest.state : "unknown";
       result.stage = result.deployment === "success" ? "deployment_verified" : ["queued","pending","in_progress"].includes(result.deployment) ? "deployment_started" : ["failure","error"].includes(result.deployment) ? "deployment_failed" : "commit_created";
       result.evidence = "github-cloudflare-production-deployment";
-      if (/^https:\/\//.test(latest.log_url || "")) result.url = latest.log_url;
+      if((await this.head())!==sha)return {...result,deployment:'superseded',stage:'commit_created',evidence:null,reason:'newer_commit_exists'};
+      const url=providerURL(latest.log_url);if(url)result.url=url;
     } catch { result.deployment = "unknown"; result.reason="provider_evidence_unavailable"; }
     return result;
   }
