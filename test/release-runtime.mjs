@@ -32,7 +32,7 @@ const origin = "https://luxtowelco.com", dispatch = (path,options)=>mf.dispatchF
 const post = (body,cookie,requestOrigin=origin)=>({method:"POST",headers:{Origin:requestOrigin,"Content-Type":"application/json","X-CMS-Request":"1",...(cookie?{Cookie:cookie}:{})},body:JSON.stringify(body)});
 let passed = 0;
 try {
-  for (const path of ["/admin/","/admin/builder/","/admin/builder/builder.css","/admin/builder/builder.js","/admin/builder/model.js","/admin/builder/layout.js","/admin/builder/images.js","/admin/builder/image-format.js","/builder-layout.js"]) {
+  for (const path of ["/admin/","/admin/builder/","/admin/builder/builder.css","/admin/builder/builder.js","/admin/builder/customer-ui.js","/admin/builder/customer.css","/admin/builder/model.js","/admin/builder/layout.js","/admin/builder/images.js","/admin/builder/image-format.js","/builder-layout.js"]) {
     const response = await dispatch(path);
     assert.equal(response.status,200);
     if(path.endsWith("/")) { assert.ok(response.headers.get("Content-Security-Policy")?.includes("script-src 'self'")); assert.ok(response.headers.get("X-Robots-Tag")?.includes("noindex")); }

@@ -10,6 +10,7 @@ const sandbox=await fs.mkdtemp(path.join(folder,'site-'));await fs.cp('public',p
 const originals=new Map(await Promise.all(['public/index.html','public/sitemap.xml','src/auth.js'].map(async f=>[f,await fs.readFile(f)])));
 const server=await startLocal(sandbox,0),origin=`http://127.0.0.1:${server.address().port}`;
 const browser=await chromium.launch({channel:'chrome',headless:true}),context=await browser.newContext({viewport:{width:1700,height:1050}}),page=await context.newPage();
+await context.addInitScript(()=>{if(window===window.top)localStorage.setItem('baran-builder-ui-mode','advanced');});
 page.setDefaultTimeout(20000);const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
 const results=[];const ok=name=>{results.push(name);console.log('PASS '+name)},frame=()=>page.frameLocator('#page');
 const selected=()=>page.locator('#element-id').innerText();

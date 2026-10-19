@@ -5,6 +5,7 @@ import { BLOCKS, createBlock } from './blocks.js';
 import {renderCanvas,updateGeometry} from './canvas.js';
 import {installProfessionalControls,cloneSubtrees,subtreeIds,selectedRoots} from './pro-controls.js';
 import {installPagesUI} from './pages-ui.js';
+import {installCustomerUI} from './customer-ui.js';
 import {lockedBy,allowsLockedChanges,requiredUnlocks} from './locks.js';
 
 const $ = selector => document.querySelector(selector);
@@ -12,6 +13,7 @@ const frame = $("#page");
 let base, history, library, db, storageKey, user, doc, selected = [], device = "desktop", preview = false;
 let gesture = null, saveTimer, noticeTimer, locked = false, draftWritable = false, saveChain = Promise.resolve(), originals = new Map();
 let sessionInfo, currentPath = "public/index.html", activeRef = "", sessionTimer, publishing = false, publishRequest = null, publication = null;
+let customerUI, selectionPending = false;
 const updateHooks=[];
 const notifyControls=()=>{if(history&&doc)for(const fn of updateHooks)fn();};
 const model = () => history.present;
@@ -158,12 +160,13 @@ function drawSelection() {
   }
   if($('#guides').checked&&selected.length){const e=element(selected[0]),parent=parentFor(e).getBoundingClientRect(),rect=nodeFor(e.id).getBoundingClientRect();for(const vertical of [true,false]){const line=doc.createElement('div');line.dataset.builderOverlay='guide';const mid=vertical?parent.left+parent.width/2:parent.top+parent.height/2,aligned=Math.abs((vertical?rect.left+rect.width/2:rect.top+rect.height/2)-mid)<5;line.style.cssText=`position:fixed;pointer-events:none;z-index:2147483646;background:${aligned?'#22a65b':'#a855f7'};opacity:.65;left:${vertical?mid:parent.left}px;top:${vertical?parent.top:mid}px;width:${vertical?1:parent.width}px;height:${vertical?parent.height:1}px`;doc.body.append(line);}}
 }
-function select(id, multiple = false) {
+function select(id, multiple = false, {reveal = true} = {}) {
   if (preview || locked) return;
   selected = multiple ? selected.includes(id) ? selected.filter(i => i !== id) : [...selected, id] : [id];
   if (selectedElement()) $("#anchor").value = selectedElement().anchor;
   for(let detail=nodeFor(id)?.closest('details');detail;detail=detail.parentElement?.closest('details'))detail.open=true;
   drawSelection(); layers(); properties();notifyControls();
+  if(reveal)customerUI?.revealSelection();
 }
 function properties() {
   const e = selectedElement();
@@ -216,14 +219,15 @@ function startGesture(event) {
   if (preview || locked || publishing || event.button !== 0) return;
   const resize = event.target.closest("[data-resize]")?.dataset.resize;
   const hit = event.target.closest("[data-builder-id]") || doc.elementsFromPoint(event.clientX, event.clientY).map(n => n.closest("[data-builder-id]")).find(Boolean) || event.target.closest('[data-builder-anchor]');
-  if (!resize && !hit) { selected = []; drawSelection(); properties(); layers(); return; }
+  selectionPending = !resize;
+  if (!resize && !hit) { selectionPending=false;selected = []; drawSelection(); properties(); layers(); notifyControls(); return; }
   event.preventDefault();
   if (!resize) {
     let hitId=hit.dataset.builderId||hit.dataset.builderAnchor;
-    if (event.shiftKey) { select(hitId, true); return; }
+    if (event.shiftKey) { select(hitId, true,{reveal:false}); return; }
     const group=selected.find(id=>element(id)?.kind==='group'&&nodeFor(id).contains(hit));
-    if(group)hitId=group;
-    if (!selected.includes(hitId)) select(hitId);
+    if(group&&customerUI?.mode==='advanced')hitId=group;
+    if (!selected.includes(hitId)) select(hitId,false,{reveal:false});
   }
   if(selected.some(id=>lockedBy(model(),id)))return notice('برای جابه‌جایی، ابتدا قفل عنصر یا ظرف والد را باز کنید.');
   if(selected.some(id=>model().sections.some(s=>s.id===id)))return;
@@ -274,9 +278,12 @@ function moveGesture(event) {
   render(next);
 }
 function endGesture(event) {
-  if (!gesture || (event && event.pointerId !== gesture.pointerId)) return;
+  if(!gesture){if(selectionPending){selectionPending=false;customerUI?.revealSelection();}return;}
+  if(event && event.pointerId !== gesture.pointerId)return;
   const next = gesture.next;
   const drop = gesture.drop;
+  const reveal=selectionPending&&!gesture.moved;
+  selectionPending=false;
   gesture = null;
   doc.querySelectorAll("[data-builder-drop]").forEach(n => n.removeAttribute("data-builder-drop"));
   if (next && drop) {
@@ -286,8 +293,10 @@ function endGesture(event) {
     notice("عنصر به بخش جدید منتقل شد. چیدمان موبایل را بررسی کنید؛ تنظیمات اندازه دیگر حفظ شدند.");
   }
   if (next) commit(next); else drawSelection();
+  if(reveal)customerUI?.revealSelection();
 }
 function cancelGesture() {
+  selectionPending=false;
   if (gesture) { gesture = null; render(); properties(); }
 }
 function rootAnchor(id,draft=model()){
@@ -441,7 +450,7 @@ $("#preview").onclick = () => {
   doc.documentElement.toggleAttribute("data-builder-preview", preview);
   $("#preview").setAttribute("aria-pressed", preview);
   $("#preview").textContent = preview ? "بازگشت به ویرایش" : "پیش‌نمایش";
-  drawSelection(); updateHistory();
+  drawSelection(); updateHistory();notifyControls();
 };
 for (const key of ["text", "alt", "href"]) $("#" + key).addEventListener("input", event => {
   if (!selectedElement()) return;
@@ -690,8 +699,9 @@ for(const key of ['bold','italic','underline'])$('#rich-'+key).onclick=()=>{cons
 $('#public-preview').onclick=async()=>{if(!history||publishing)return;try{$('#public-preview').disabled=true;const result=await api('/builder/preview',{model:clone(model()),unlockIds:requiredUnlocks(base.model,model()).sort()});$('#output-frame').srcdoc=result.html;$('#output-dialog').showModal();}catch(error){notice(error.message);}finally{$('#public-preview').disabled=false;}};
 $('#output-close').onclick=()=>{$('#output-dialog').close();$('#output-frame').srcdoc='';};
 $('#guides').onchange=()=>drawSelection();
-const context={api,getModel:()=>history?.present,getSelected:()=>selected,getNode:nodeFor,getElement:element,getDevice:()=>device,getBase:()=>base,getPath:()=>currentPath,getSession:()=>sessionInfo,getUser:()=>user,mutate,select,notice,onUpdate:fn=>updateHooks.push(fn),dbRecord,save,loadPage,refreshLibrary,openPrepared:async prepared=>{const path=prepared.model.base.path;await dbRecord(`prepared:${user}:${path}`,prepared);await loadPage(path,'',true,prepared);await save();}};
-installProfessionalControls(context);
+const context={api,getModel:()=>history?.present,getSelected:()=>selected,getNode:nodeFor,getElement:element,getDocument:()=>doc,isReadOnly:()=>preview||locked||publishing||!draftWritable,getDevice:()=>device,getBase:()=>base,getPath:()=>currentPath,getSession:()=>sessionInfo,getUser:()=>user,mutate,select,notice,onUpdate:fn=>updateHooks.push(fn),dbRecord,save,loadPage,refreshLibrary,openPrepared:async prepared=>{const path=prepared.model.base.path;await dbRecord(`prepared:${user}:${path}`,prepared);await loadPage(path,'',true,prepared);await save();}};
+const professional=installProfessionalControls(context);
 $('#properties').after($('#professional-controls'));
 installPagesUI(context);
+customerUI=installCustomerUI(context,professional);
 boot().catch(error => { $("#gate-message").textContent = error.message; });

@@ -6,6 +6,7 @@ import {startLocal} from '../scripts/cms-local.mjs';
 
 const folder=path.resolve('.cms-local/task6-qa');await fs.mkdir(folder,{recursive:true});const sandbox=await fs.mkdtemp(path.join(folder,'ratio-'));await fs.cp('public',path.join(sandbox,'public'),{recursive:true});
 const server=await startLocal(sandbox,0),origin=`http://127.0.0.1:${server.address().port}`,browser=await chromium.launch({channel:'chrome',headless:true}),context=await browser.newContext({viewport:{width:1720,height:1000}}),page=await context.newPage(),results=[],errors=[];
+await context.addInitScript(()=>{if(window===window.top)localStorage.setItem('baran-builder-ui-mode','advanced');});
 page.setDefaultTimeout(25000);page.on('pageerror',e=>errors.push(e.message));const frame=()=>page.frameLocator('#page'),saved=()=>page.getByText('پیش‌نویس در این مرورگر ذخیره شد',{exact:true}).waitFor(),ok=name=>{results.push(name);console.log('PASS '+name);};
 async function ratio(target,value){await page.locator('#pro-image-ratio').selectOption(value);await saved();await page.waitForFunction(({id,ratio})=>{const n=document.querySelector('#page').contentDocument.querySelector(`[data-builder-id="${id}"]`),r=n?.getBoundingClientRect();return r&&Math.abs(r.width/r.height-ratio)<.01;},{id:target,ratio:Number(value)});}
 try{

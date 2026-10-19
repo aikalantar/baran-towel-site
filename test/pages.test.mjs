@@ -29,7 +29,7 @@ async function publishPrepared(repo,prepared,patch={}){
 const action=async(repo,path,operation,options={})=>pageAction(repo,{path,head:await repo.head(),action:operation,requestId:crypto.randomUUID(),...options},admin,true);
 
 test("page creation is draft-only and a prepared page publishes to a genuine static route with SEO and sitemap",async t=>{
-  const {repo}=await fixture(t),before=await repo.head();
+  const {repo}=await fixture(t),before=await repo.head(),initialPages=(await listPages(repo)).pages;
   const prepared=await preparePage(repo,{slug:"test-new-page",title:"صفحه جدید آزمون",description:"توضیح قابل ویرایش",template:"content"});
   assert.equal(await repo.head(),before);
   assert.equal(prepared.path,"public/test-new-page/index.html");
@@ -42,7 +42,10 @@ test("page creation is draft-only and a prepared page publishes to a genuine sta
   assert.equal(saved.title,"صفحه جدید آزمون");assert.equal(saved.querySelector('meta[name="description"]').content,"توضیح قابل ویرایش");
   assert.equal(saved.querySelector('link[rel="canonical"]').href,"https://luxtowelco.com/test-new-page/");
   assert.ok((await repo.read("public/sitemap.xml")).content.includes("https://luxtowelco.com/test-new-page/"));
-  const pages=await listPages(repo);assert.equal(pages.pages.length,10);assert.equal(pages.pages.find(p=>p.path===prepared.path).managed,true);
+  const pages=await listPages(repo);assert.equal(pages.pages.length,initialPages.length+1);assert.equal(pages.pages.find(p=>p.path===prepared.path).managed,true);
+  // Real production snapshots can retain deleted-page recovery records.
+  // Creation must preserve those records as well as every original page.
+  for(const previous of initialPages)assert.deepEqual(pages.pages.find(p=>p.path===previous.path),previous);
 });
 
 test("all templates and English page paths preserve the genuine site shell and valid language/heading metadata",async t=>{

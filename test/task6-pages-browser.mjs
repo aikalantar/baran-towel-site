@@ -11,6 +11,7 @@ const originalFiles=['public/index.html','public/en/index.html','public/sitemap.
 const originals=new Map(await Promise.all(originalFiles.map(async f=>[f,await fs.readFile(f)])));
 const server=await startLocal(sandbox,0),origin=`http://127.0.0.1:${server.address().port}`;
 const browser=await chromium.launch({channel:'chrome',headless:true}),context=await browser.newContext({viewport:{width:1600,height:1000}});
+await context.addInitScript(()=>{if(window===window.top)localStorage.setItem('baran-builder-ui-mode','advanced');});
 await context.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
 const page=await context.newPage(),errors=[],results=[],publications=[];page.setDefaultTimeout(30000);page.on('pageerror',e=>errors.push(e.message));page.on('request',request=>{if(request.url().endsWith('/builder/publish'))publications.push(request.postDataJSON());});
 const frame=()=>page.frameLocator('#page'),ok=name=>{results.push(name);console.log('PASS '+name);};
