@@ -33,7 +33,7 @@
     },
     {
       "path": "public/cms-stability-canary-20261019-t11/index.html",
-      "status": "published",
+      "status": "deleted",
       "managed": true,
       "page": {
         "id": "page-e13fe6ae-95cf-4ccd-a84d-d9abd01e5af3",
@@ -53,8 +53,13 @@
           "order": 0
         }
       },
-      "updated": "2026-10-19T12:13:55.423Z",
-      "menuExplicit": false
+      "updated": "2026-10-19T12:17:43.240Z",
+      "menuExplicit": false,
+      "recovery": {
+        "path": "public/cms-stability-canary-20261019-t11/index.html",
+        "revision": "655f3fd38d58213a136ee0649e2de876a1244ead",
+        "fileSha": "f4039dbbb8c375c53aa7223e85b59ddd50d90b1d"
+      }
     }
   ],
   "requests": [
@@ -62,6 +67,12 @@
       "id": "486c818d-7c55-4730-af70-89d383c0f6e9",
       "fingerprint": "0a5cc4da70b05fd4b8223a4d590b04a6820b75718fa7b75dbc538acc4e05b5f5",
       "path": "public/v2-release-canary-20261019-0335/index.html",
+      "action": "delete"
+    },
+    {
+      "id": "7eac61b2-bc58-47cc-8e38-4b185650615d",
+      "fingerprint": "c26107083c09488606efe8f5bfd9c8d5cab9523e2d41067bb0bd4b8c91ea7b18",
+      "path": "public/cms-stability-canary-20261019-t11/index.html",
       "action": "delete"
     }
   ]
