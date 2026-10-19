@@ -129,7 +129,8 @@ export function renderBlockNode(document, element) {
     node.setAttribute("decoding", "async");
     for (const key of ["width", "height"]) if (Number.isInteger(content[key]) && content[key] > 0 && content[key] <= 8000) node.setAttribute(key, String(content[key]));
     const variants = Array.isArray(content.variants) ? content.variants.filter(v => safeImage(v?.src) && Number.isInteger(v.width) && v.width > 0 && v.width <= 8000).slice(0, 3) : [];
-    if (variants.length) { node.setAttribute("srcset", variants.map(v => `${v.src} ${v.width}w`).join(", ")); node.setAttribute("sizes", "(max-width:640px) 100vw, (max-width:960px) 50vw, 33vw"); }
+    if (variants.length && safeImage(content.src) && Number.isInteger(content.width) && content.width > 0 && content.width <= 8000) variants.push({ src: content.src, width: content.width });
+    if (variants.length) { node.setAttribute("srcset", [...new Map(variants.map(v => [v.width, v])).values()].sort((a, b) => a.width - b.width).map(v => `${v.src} ${v.width}w`).join(", ")); node.setAttribute("sizes", "(max-width:640px) 100vw, (max-width:960px) 50vw, 33vw"); }
   } else if (element.type === "button") {
     node.textContent = typeof content.text === "string" ? content.text : "";
     node.setAttribute("href", safeLink(content.href) ? content.href : "#");

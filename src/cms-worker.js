@@ -176,7 +176,8 @@ export async function handleCMS(request, env, options = {}) {
     }
     if(endpoint==='/builder/preview'&&request.method==='POST'){
       if(!['admin','editor'].includes(user.role))throw new CMSFailure('دسترسی ویرایش ندارید.',403);
-      return json(await previewBuilder(repo,(await readBody(request)).model,user));
+      const body=await readBody(request);
+      return json(await previewBuilder(repo,body?.model,user,body?.unlockIds));
     }
     if (endpoint === "/builder/publish" && request.method === "POST") {
       if (user.role !== "admin") throw new CMSFailure("انتشار فقط برای مدیر مجاز است؛ پیش‌نویس را برای مدیر خروجی بگیرید.",403);

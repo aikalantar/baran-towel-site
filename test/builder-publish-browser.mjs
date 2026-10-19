@@ -102,6 +102,7 @@ try {
   const cmsOutput = applyChanges(published,[{id:field.id,value:"CMS compatibility"}],[]);
   assert.ok(cmsOutput.includes('id="builder-state"')); assert.ok(cmsOutput.includes("CMS compatibility")); count++;
   await page.locator("#continue-editing").click();
+  await page.locator("#continue-editing").waitFor({state:"hidden"});
   // The toolbar remains visible while the new base/history are loading. Wait
   // for the editing workspace, rather than accidentally probing the old frame.
   await page.waitForFunction(()=>!document.querySelector('.workspace').inert&&!document.querySelector('#page').hidden,{},{timeout:60000});

@@ -40,6 +40,39 @@ export function subtreeIds(elements, ids) {
   return result;
 }
 
+/** Switching to flow restores the document's layout without discarding free geometry. */
+export function switchLayoutMode(elements, ids, mode, { device = "desktop", boxes = new Map() } = {}) {
+  if (!devices.includes(device) || !["flow", "free"].includes(mode)) throw new Error("روش یا اندازهٔ چیدمان معتبر نیست.");
+  const next = copy(elements), selected = new Set(ids);
+  for (const element of next.filter(element => selected.has(element.id) && !element.deleted)) {
+    if (element.source || element.locked) throw new Error("تغییر روش چیدمان برای ساختار اصلی یا عنصر قفل‌شده مجاز نیست؛ ابتدا قفل را باز کنید یا از عنصر یک نسخهٔ تازه بسازید.");
+    if ((free(element) ? "free" : "flow") === mode) continue;
+    if (mode === "flow") {
+      if (next.some(child => !child.deleted && parentOf(child) === element.id && free(child) && !selected.has(child.id))) throw new Error("ابتدا فرزندان آزاد این ظرف را به جریان عادی برگردانید؛ ظرف بدون ارتفاع نمی‌تواند جای آن‌ها را در صفحه حفظ کند.");
+      element.freeLayouts = copy(element.layouts);
+      element.layouts = Object.fromEntries(devices.map(name => [name, Object.hasOwn(element.layouts[name] || {}, "hidden") ? { hidden: element.layouts[name].hidden } : {}]));
+    } else if (element.freeLayouts) {
+      element.layouts = Object.fromEntries(devices.map(name => {
+        const layout = { ...element.freeLayouts[name] };
+        if (Object.hasOwn(element.layouts[name] || {}, "hidden")) layout.hidden = element.layouts[name].hidden; else delete layout.hidden;
+        return [name, layout];
+      }));
+      delete element.freeLayouts;
+    } else {
+      const box = boxes.get(element.id);
+      if (!box || !["x", "y", "width", "height"].every(key => Number.isFinite(box[key]))) throw new Error("اندازهٔ عنصر در پیش‌نمایش در دسترس نیست؛ صفحه را دوباره باز کنید.");
+      const measured={x:box.x,y:box.y};
+      for(const dimension of ['width','height']){
+        if(box[dimension]>=.1&&box[dimension]<=300){measured[dimension]=box[dimension];measured[dimension+'Unit']='%';}
+        else{const pixels=box[dimension==='width'?'pixelWidth':'pixelHeight'];if(!Number.isFinite(pixels)||pixels<.1||pixels>4000)throw new Error('اندازهٔ عنصر برای جای‌گذاری آزاد قابل اندازه‌گیری نیست؛ ابتدا ابعاد را تنظیم کنید.');measured[dimension]=pixels;measured[dimension+'Unit']='px';}
+      }
+      element.layouts[device] = { ...element.layouts[device], ...measured };
+    }
+    element.layoutMode = mode; element.free = mode === "free";
+  }
+  return next;
+}
+
 function geometry(element, device) {
   const layout = effectiveLayout(element, device);
   if (["widthUnit", "heightUnit"].some(key => layout[key] && layout[key] !== "%")) throw new Error("برای گروه‌بندی یا تراز دقیق، ابتدا واحد عرض و ارتفاع عناصر آزاد را روی درصد قرار دهید.");
@@ -230,7 +263,7 @@ export function installProfessionalControls(ctx) {
   }
   const ratioLabel = elementNode(document, "label", {}, "نسبت کادر تصویر — اندازهٔ فعلی");
   const ratio = elementNode(document, "select", { id: "pro-image-ratio" });
-  for (const [value, label] of [["", "انتخاب نسبت"], ["1", "مربع · ۱:۱"], ["1.333333", "افقی · ۴:۳"], ["1.5", "افقی · ۳:۲"], ["1.777778", "افقی · ۱۶:۹"], ["0.5625", "عمودی · ۹:۱۶"]]) ratio.append(elementNode(document, "option", { value }, label));
+  for (const [value, label] of [["", "انتخاب نسبت"], ["0", "بدون نسبت ثابت"], ["1", "مربع · ۱:۱"], ["1.333333", "افقی · ۴:۳"], ["1.5", "افقی · ۳:۲"], ["1.777778", "افقی · ۱۶:۹"], ["0.5625", "عمودی · ۹:۱۶"]]) ratio.append(elementNode(document, "option", { value }, label));
   ratioLabel.append(ratio); panel.append(ratioLabel);
   const resetAll = elementNode(document, "button", { type: "button", id: "pro-reset-style", class: "pro-full-button" }, "بازنشانی ظاهر این اندازه");
   const warning = elementNode(document, "p", { class: "pro-warning", role: "status" });
@@ -283,7 +316,15 @@ export function installProfessionalControls(ctx) {
   mode.onchange = () => safely(() => {
     const elements = chosen();
     if (elements.some(element => element.source || element.locked)) throw new Error("تغییر روش چیدمان برای ساختار اصلی یا عنصر قفل‌شده مجاز نیست؛ ابتدا قفل را باز کنید یا از عنصر یک نسخهٔ تازه بسازید.");
-    changeElements(element => { element.layoutMode = mode.value; element.free = mode.value === "free"; });
+    if (elements.some(element => lockedBy(ctx.getModel(), element.id))) throw new Error("عنصر یا ظرف والد قفل است؛ ابتدا قفل آن را باز کنید.");
+    const boxes = new Map();
+    for (const element of elements) {
+      const node = ctx.getNode(element.id), unit = node?.closest("picture") || node;
+      const bounds = unit?.getBoundingClientRect(), parent = unit?.parentElement?.getBoundingClientRect();
+      if (bounds && parent?.width && parent.height) boxes.set(element.id, { x: rounded((bounds.left - parent.left) / parent.width * 100), y: rounded((bounds.top - parent.top) / parent.height * 100), width: rounded(bounds.width / parent.width * 100), height: rounded(bounds.height / parent.height * 100),pixelWidth:rounded(bounds.width),pixelHeight:rounded(bounds.height) });
+    }
+    const moved = switchLayoutMode(ctx.getModel().elements, ctx.getSelected(), mode.value, { device: device(), boxes });
+    ctx.mutate(next => next.elements = moved);
   });
   alignGrid.addEventListener("click", event => { const button = event.target.closest("[data-pro-align]"); if (button) safely(() => { const elements = alignElements(ctx.getModel().elements, ctx.getSelected(), device(), button.dataset.proAlign); ctx.mutate(next => next.elements = elements); }); });
   panel.addEventListener("change", event => {
@@ -300,20 +341,9 @@ export function installProfessionalControls(ctx) {
   panel.addEventListener("click", event => { const button = event.target.closest("[data-pro-reset]"); if (button) writeStyle(button.dataset.proReset, undefined); });
   resetAll.onclick = () => changeElements(element => { if (device() === "desktop") element.style = {}; else { element.responsiveStyles ||= { tablet: {}, mobile: {} }; element.responsiveStyles[device()] = {}; } });
   ratio.onchange = () => safely(() => {
-    const value = Number(ratio.value); if (!value) return;
-    const heights = new Map();
-    for (const element of chosen()) {
-      if (element.type !== "image") continue;
-      const node = ctx.getNode(element.id), unit = node?.closest("picture") || node, bounds = unit?.getBoundingClientRect(), parent = unit?.parentElement?.getBoundingClientRect();
-      if (!bounds || !parent?.height || !parent.width) throw new Error("اندازهٔ والد تصویر در این پیش‌نمایش در دسترس نیست.");
-      const layout = effectiveLayout(element, device()), widthUnit = layout.widthUnit || "%", heightUnit = layout.heightUnit || "%";
-      const width = layout.width ?? (widthUnit === "px" ? bounds.width : widthUnit === "vw" ? bounds.width / node.ownerDocument.defaultView.innerWidth * 100 : bounds.width / parent.width * 100);
-      const widthPx = widthUnit === "px" ? width : width / 100 * (widthUnit === "vw" ? node.ownerDocument.defaultView.innerWidth : parent.width);
-      const height = rounded(widthPx / value / (heightUnit === "px" ? 1 : heightUnit === "vh" ? node.ownerDocument.defaultView.innerHeight / 100 : parent.height / 100));
-      if (height < .1 || height > (heightUnit === "%" ? 300 : 4000)) throw new Error("این نسبت از محدودهٔ ظرف بزرگ‌تر می‌شود؛ ابتدا اندازهٔ ظرف یا عرض تصویر را تغییر دهید.");
-      heights.set(element.id, height);
-    }
-    changeElements(element => { if (heights.has(element.id)) { element.layouts[device()] ||= {}; element.layouts[device()].height = heights.get(element.id); } }); ratio.value = "";
+    if(ratio.value==='')return;
+    const value=Number(ratio.value);
+    changeElements(element=>{if(element.type==='image')store(element).aspectRatio=value;});ratio.value='';
   });
   function keyboard(event) {
     if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName) || event.target.isContentEditable || document.body.classList.contains("preview")) return;
@@ -351,7 +381,7 @@ export function installProfessionalControls(ctx) {
     selectionNote.textContent = elements.length > 1 ? `تنظیم‌های ظاهر روی ${elements.length} عنصر انتخاب‌شده اعمال می‌شود.` : "هر تغییر قابل واگرد است. بازنشانی ↺ مقدار ارث‌برده‌شده را برمی‌گرداند.";
     mode.value = free(first) ? "free" : "flow";
     mode.disabled = elements.some(element => element.source || element.locked);
-    modeAdvice.textContent = elements.some(element => element.source) ? "روش چیدمان ساختار اصلی حفظ می‌شود. برای ساخت آزادانه، عنصر را تکثیر کنید یا یک ظرف تازه بیفزایید." : "در حالت جریان، Grid/Flex ظرف جای فرزندان را تعیین می‌کند؛ تنظیم‌های آزاد هنگام برگشت محفوظ می‌مانند.";
+    modeAdvice.textContent = elements.some(element => element.source) ? "روش چیدمان ساختار اصلی حفظ می‌شود. برای ساخت آزادانه، عنصر را تکثیر کنید یا یک ظرف تازه بیفزایید." : "در حالت جریان، Grid/Flex جای عنصر را تعیین می‌کند؛ موقعیت و اندازهٔ آزاد برای بازگشت محفوظ می‌مانند. ابتدا فرزندان آزاد ظرف را به جریان برگردانید.";
     buttons.lock.textContent = elements.every(element => element.locked) ? "بازکردن قفل" : "قفل عنصر";
     buttons.lock.setAttribute("aria-pressed", elements.every(element => element.locked));
     const allHidden = elements.every(element => effectiveLayout(element, device()).hidden === true);

@@ -13,6 +13,12 @@ function legacy() {
 const base = () => { const v1 = legacy(); return migrateModel(v1, v1, anchors); };
 function addBlock(model, kind, options = {}) { const nodes = createBlock(kind, { anchor: "section-main", ...options }); model.elements.push(...nodes); return nodes; }
 
+test('explicit null and false breakpoint records fail closed instead of crashing rendering after import',()=>{
+ const original=base();
+ for(const value of [null,false,0,''])for(const key of ['layouts','freeLayouts']){const model=clone(original);if(key==='freeLayouts')model.elements[0].freeLayouts={desktop:value};else model.elements[0].layouts.mobile=value;assert.equal(validModel(model,original,anchors),false);}
+ const omitted=clone(original);delete omitted.elements[0].layouts.tablet;assert.equal(validModel(omitted,original,anchors),true,'An omitted override still inherits safely');
+});
+
 test("v1 migration preserves original identity, revision, content and legacy mobile geometry without mutating input", () => {
   const old = legacy(), before = clone(old), migrated = migrateModel(old, old, anchors);
   assert.deepEqual(old, before);

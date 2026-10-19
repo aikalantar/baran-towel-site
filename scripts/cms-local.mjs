@@ -115,6 +115,7 @@ export class LocalRepository {
       );
     this.busy = true;
     const backups = [];
+    const temporaryFiles=new Set();
     try {
       if ((await this.head()) !== base) throw new CMSFailure("فایل‌ها تغییر کرده‌اند؛ دوباره بارگذاری کنید.",409);
       await this.checkpoint(base,changes.map(change=>change.path));
@@ -125,6 +126,7 @@ export class LocalRepository {
         if(change.delete===true){await fs.unlink(target).catch(error=>{if(error.code!=="ENOENT")throw error;});continue;}
         await fs.mkdir(path.dirname(target), { recursive: true });
         const temporary = target + `.cms-${randomUUID()}.tmp`;
+        temporaryFiles.add(temporary);
         await fs.writeFile(
           temporary,
           change.encoding === "base64"
@@ -132,12 +134,19 @@ export class LocalRepository {
             : change.content,
         );
         await fs.rename(temporary, target);
+        temporaryFiles.delete(temporary);
       }
       const next=await this.head();await this.checkpoint(next,changes.filter(c=>!c.delete).map(c=>c.path));
       const indexFile=path.join(this.root,'.cms-local','local-revisions','index.json');
       const index=JSON.parse(await fs.readFile(indexFile,'utf8').catch(()=> '[]'));
       index.unshift({sha:next,date:new Date().toISOString(),message,paths:changes.filter(c=>!c.delete&&c.path.endsWith('/index.html')).map(c=>c.path)});
-      await fs.writeFile(indexFile,JSON.stringify(index.slice(0,500))+'\n');
+      // An interrupted index write must never truncate the last valid history.
+      const temporaryIndex=indexFile+`.cms-${randomUUID()}.tmp`;
+      temporaryFiles.add(temporaryIndex);
+      await fs.mkdir(path.dirname(indexFile),{recursive:true});
+      await fs.writeFile(temporaryIndex,JSON.stringify(index.slice(0,500))+'\n');
+      await fs.rename(temporaryIndex,indexFile);
+      temporaryFiles.delete(temporaryIndex);
       return { sha: next, mode: "local" };
     } catch (error) {
       for (const { target, existing } of backups.reverse()) {
@@ -146,6 +155,7 @@ export class LocalRepository {
       }
       throw error;
     } finally {
+      await Promise.all([...temporaryFiles].map(file=>fs.unlink(file).catch(()=>{})));
       this.busy = false;
     }
   }

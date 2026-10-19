@@ -3,11 +3,11 @@ import path from 'node:path';
 import {startLocal} from './cms-local.mjs';
 
 // Review publication writes to a disposable copy, never to workspace public/.
-const folder=path.resolve('.cms-local/task5-review');
+const folder=path.resolve('.cms-local/builder-review');
 await fs.mkdir(folder,{recursive:true});
 const isolated=await fs.mkdtemp(path.join(folder,'site-'));
 await fs.cp('public',path.join(isolated,'public'),{recursive:true});
-const preferred=Number(process.env.BUILDER_REVIEW_PORT)||7955;
+const preferred=Number(process.env.BUILDER_REVIEW_PORT)||7956;
 let server;
 try{server=await startLocal(isolated,preferred);}
 catch(error){if(!['EADDRINUSE','EACCES'].includes(error.code))throw error;server=await startLocal(isolated,0);}

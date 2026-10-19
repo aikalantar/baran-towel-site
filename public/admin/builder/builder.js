@@ -5,12 +5,12 @@ import { BLOCKS, createBlock } from './blocks.js';
 import {renderCanvas,updateGeometry} from './canvas.js';
 import {installProfessionalControls,cloneSubtrees,subtreeIds,selectedRoots} from './pro-controls.js';
 import {installPagesUI} from './pages-ui.js';
-import {lockedBy,allowsLockedChanges} from './locks.js';
+import {lockedBy,allowsLockedChanges,requiredUnlocks} from './locks.js';
 
 const $ = selector => document.querySelector(selector);
 const frame = $("#page");
 let base, history, library, db, storageKey, user, doc, selected = [], device = "desktop", preview = false;
-let gesture = null, saveTimer, noticeTimer, locked = false, saveChain = Promise.resolve(), originals = new Map();
+let gesture = null, saveTimer, noticeTimer, locked = false, draftWritable = false, saveChain = Promise.resolve(), originals = new Map();
 let sessionInfo, currentPath = "public/index.html", activeRef = "", sessionTimer, publishing = false, publishRequest = null, publication = null;
 const updateHooks=[];
 const notifyControls=()=>{if(history&&doc)for(const fn of updateHooks)fn();};
@@ -55,17 +55,19 @@ function readDraft() {
 }
 function save() {
   clearTimeout(saveTimer);
-  if (locked || !history) return Promise.resolve();
+  // A rejected draft stays read-only until its raw data is archived and the
+  // user explicitly starts over. Visibility/pagehide must never replace it.
+  if (locked || !history || !draftWritable) return Promise.resolve(true);
   const raw = encodeDraft(history);
   const key = storageKey;
   $("#save-status").textContent = "در حال ذخیره…";
   saveChain = saveChain.catch(() => {}).then(() => new Promise((resolve, reject) => {
     const transaction = db.transaction("drafts", "readwrite");
     transaction.objectStore("drafts").put(raw, key);
-    transaction.oncomplete = () => { $("#save-status").textContent = "پیش‌نویس در این مرورگر ذخیره شد"; resolve(); };
+    transaction.oncomplete = () => { $("#save-status").textContent = "پیش‌نویس در این مرورگر ذخیره شد"; resolve(true); };
     transaction.onerror = transaction.onabort = () => reject(new Error("ذخیره انجام نشد؛ فضای مرورگر کافی نیست. پیش‌نویس را دانلود کنید."));
   }));
-  return saveChain.catch(error => { $("#save-status").textContent = "ذخیره ناموفق — پیش‌نویس را دانلود کنید"; notice(error.message); });
+  return saveChain.catch(error => { $("#save-status").textContent = "ذخیره ناموفق — پیش‌نویس را دانلود کنید"; notice(error.message); return false; });
 }
 function changed() {
   $("#save-status").textContent = "تغییرات در حال ذخیره…";
@@ -73,7 +75,7 @@ function changed() {
   save();
 }
 function commit(next, updateControls = true) {
-  if (locked || preview || publishing) return false;
+  if (locked || preview || publishing || !draftWritable) return false;
   if(!allowsLockedChanges(model(),next)){notice('این عنصر یا ظرف والد آن قفل است؛ ابتدا قفل را از فهرست لایه‌ها باز کنید.');properties();return false;}
   if(!validModel(next,base.model,base.anchors)){notice('این تغییر با ساختار امن صفحه سازگار نیست. والد، H1 یا دادهٔ بلوک را بررسی کنید؛ پیش‌نویس قبلی حفظ شد.');return false;}
   if (!history.commit(next)) return false;
@@ -89,7 +91,7 @@ function updateHistory() {
   $("#redo").disabled = !history.future.length || preview || publishing;
 }
 function travel(direction) {
-  if (locked || preview || publishing) return;
+  if (locked || preview || publishing || !draftWritable) return;
   cancelGesture();
   if (history[direction]()) { render(); properties(); updateHistory(); changed(); }
 }
@@ -244,6 +246,7 @@ function moveGesture(event) {
     const xDelta = dx / item.anchor.width * 100, yDelta = dy / item.anchor.height * 100;
     const snap = n => $("#snap").checked ? Math.round(n) : round(n);
     if (gesture.resize) {
+      if(e.type==='image'&&effectiveStyle(e,device).aspectRatio>0){const appearance=device==='desktop'?e.style:((e.responsiveStyles||={})[device]||={});appearance.aspectRatio=0;}
       const w = item.rect.width / item.anchor.width * 100, h = item.rect.height / item.anchor.height * 100;
       const west = gesture.resize.includes("w"), north = gesture.resize.includes("n");
       l.width = Math.max(.1, Math.min(300, snap(w + (west ? -xDelta : xDelta))));
@@ -449,7 +452,7 @@ for (const key of ["text", "alt", "href"]) $("#" + key).addEventListener("input"
 });
 for (const key of ["x", "y", "width", "height"]) $("#" + key).addEventListener("change", event => {
   if (!selectedElement() || !event.target.checkValidity() || event.target.value === "") { properties(); return; }
-  mutate(next => { const e = [...next.elements,...next.sections].find(e => e.id === selected[0]);if(!e||e.locked)return;e.layouts[device][key] = Number(event.target.value);if(['width','height'].includes(key))e.layouts[device][key+'Unit']=$('#'+key+'-unit').value; });
+  mutate(next => { const e = [...next.elements,...next.sections].find(e => e.id === selected[0]);if(!e||e.locked)return;const layout=e.layouts[device]||={};layout[key] = Number(event.target.value);if(['width','height'].includes(key))layout[key+'Unit']=$('#'+key+'-unit').value;if(key==='height'&&e.type==='image'&&effectiveStyle(e,device).aspectRatio>0)(device==='desktop'?e.style:((e.responsiveStyles||={})[device]||={})).aspectRatio=0; });
 });
 for(const dimension of ['width','height'])$('#'+dimension+'-unit').onchange=event=>{
   const e=selectedElement();if(!e)return;
@@ -457,13 +460,13 @@ for(const dimension of ['width','height'])$('#'+dimension+'-unit').onchange=even
   const reference=unit==='px'?1:unit==='%'?parent[dimension]/100:(dimension==='width'?doc.defaultView.innerWidth:doc.defaultView.innerHeight)/100;
   const value=round(rect[dimension]/Math.max(.001,reference));
   if(value<.1||value>(unit==='%'?300:4000)){properties();return notice('اندازه برای این واحد از محدودهٔ مجاز خارج است؛ ابتدا ابعاد را تغییر دهید.');}
-  mutate(next=>{const target=next.elements.find(item=>item.id===e.id);if(target){target.layouts[device][dimension]=value;target.layouts[device][dimension+'Unit']=unit;}});
+  mutate(next=>{const target=next.elements.find(item=>item.id===e.id);if(target){const layout=target.layouts[device]||={};layout[dimension]=value;layout[dimension+'Unit']=unit;}});
 };
 for (const key of ["fontSize", "color", "textAlign", "z"]) $("#" + key).addEventListener("change", event => {
   if (!selectedElement() || !event.target.checkValidity()) return;
-  mutate(next => { const e = [...next.elements,...next.sections].find(e => e.id === selected[0]);if(!e||e.locked)return;if(key==='z')e.z=Number(event.target.value);else {const style=device==='desktop'?e.style:(e.responsiveStyles[device]||={});style[key]=key==='fontSize'?Number(event.target.value):event.target.value;} });
+  mutate(next => { const e = [...next.elements,...next.sections].find(e => e.id === selected[0]);if(!e||e.locked)return;if(key==='z')e.z=Number(event.target.value);else {const style=device==='desktop'?e.style:((e.responsiveStyles||={})[device]||={});style[key]=key==='fontSize'?Number(event.target.value):event.target.value;} });
 });
-$("#reset-layout").onclick = () => mutate(next => { const e = [...next.elements,...next.sections].find(e => e.id === selected[0]); if (e&&!e.locked) e.layouts[device] = {}; });
+$("#reset-layout").onclick = () => mutate(next => { const e = [...next.elements,...next.sections].find(e => e.id === selected[0]); if (e&&!e.locked){e.layouts[device] = {};delete (device==='desktop'?e.style:((e.responsiveStyles||={})[device]||={})).aspectRatio;} });
 $("#image-library").onchange = event => { if (safeImage(event.target.value)) mutate(next => { const content = next.elements.find(e => e.id === selected[0]).content; content.src = event.target.value; delete content.variants; delete content.width; delete content.height; }); };
 $("#upload").onchange = event => { upload(event.target.files[0]).catch(error => notice(error.message)); event.target.value = ""; };
 $("#export").onclick = () => download(encodeDraft(history));
@@ -471,10 +474,15 @@ $("#import").onchange = async event => {
   try {
     const file = event.target.files[0];
     if (!file || file.size > 20_000_000) throw new Error("فایل پیش‌نویس باید حداکثر ۲۰ مگابایت باشد.");
-    const imported = decodeDraft(await file.text(), base.model, base.anchors);
+    const raw = await file.text();
+    // Keep the exact uploaded bytes, including incompatible JSON and its
+    // original history, before attempting an undoable content import.
+    await archiveDraft(raw);
+    await refreshArchives();
+    const imported = decodeDraft(raw, base.model, base.anchors);
     // Import is itself one undoable operation, preserving current local work.
-    commit(imported.present);
-    notice("پیش‌نویس بازیابی شد؛ واگرد برای بازگشت به قبل در دسترس است.");
+    const changed = commit(imported.present);
+    notice(changed ? "محتوای پیش‌نویس بازیابی شد؛ واگرد برای بازگشت در دسترس است. فایل و تاریخچهٔ واردشده در آرشیو محفوظ‌اند." : "فایل در آرشیو محفوظ است؛ محتوای فعلی تغییر نکرد.");
   } catch (error) { notice(error.message); }
   event.target.value = "";
 };
@@ -503,10 +511,12 @@ function launch() {
 }
 async function loadPage(path, ref = "", fresh = false, prepared = null) {
   if (publishing) return;
-  if (history && storageKey) await save();
+  if (history && storageKey && await save()===false)throw new Error('ذخیره پیش‌نویس ناموفق بود؛ پیش از تعویض صفحه، JSON را دانلود یا ذخیره را دوباره امتحان کنید.');
+  const priorDraftWritable = draftWritable;
+  draftWritable = false;
   frame.hidden=true;$('.workspace').inert=true;
   let next=prepared;
-  if(!next){try{next=await api(`/builder?path=${encodeURIComponent(path)}${ref ? `&ref=${ref}` : ""}`);}catch(error){if(error.status===404&&!ref)next=await dbRecord(`prepared:${user}:${path}`);if(!next){frame.hidden=false;$('.workspace').inert=false;throw error;}}}
+  if(!next){try{next=await api(`/builder?path=${encodeURIComponent(path)}${ref ? `&ref=${ref}` : ""}`);}catch(error){if(error.status===404&&!ref)next=await dbRecord(`prepared:${user}:${path}`);if(!next){draftWritable=priorDraftWritable;frame.hidden=false;$('.workspace').inert=false;throw error;}}}
   base = next; currentPath = path; activeRef = ref;
   const address = new URL(location.href); address.searchParams.set("path",path);
   if (ref) address.searchParams.set("ref",ref); else address.searchParams.delete("ref");
@@ -527,19 +537,25 @@ async function loadPage(path, ref = "", fresh = false, prepared = null) {
   history = new History(base.model);
   const saved = await readDraft();
   if (saved && !fresh) {
-    try { history = decodeDraft(saved, base.model, base.anchors);if(JSON.parse(saved).version===1){await dbRecord(`archive:${storageKey}:${Date.now()}`,saved);notice('پیش‌نویس نسخهٔ ۱ و همهٔ واگردها مهاجرت کردند؛ فایل اصلی در آرشیو حفظ شد.');} $("#save-status").textContent = "پیش‌نویس و تاریخچه قبلی بازیابی شدند"; }
+    try {
+      const restored = decodeDraft(saved, base.model, base.anchors);
+      if(JSON.parse(saved).version===1){await archiveDraft(saved);notice('پیش‌نویس نسخهٔ ۱ و همهٔ واگردها مهاجرت کردند؛ فایل اصلی در آرشیو حفظ شد.');}
+      history = restored;
+      $("#save-status").textContent = "پیش‌نویس و تاریخچه قبلی بازیابی شدند";
+    }
     catch {
       $("#gate-message").textContent = "نسخه پایه صفحه تغییر کرده یا پیش‌نویس ناسازگار است. ابتدا نسخه قبلی را دانلود کنید. شروع تازه فقط پیش‌نویس این مرورگر را جایگزین می‌کند.";
+      try { await archiveDraft(saved); }
+      catch { $("#gate-message").textContent += " آرشیو مرورگر در دسترس نیست؛ فایل قبلی را دانلود کنید. پیش‌نویس اصلی جایگزین نشده است."; }
       const prior = await dbRecord(`request:${storageKey}`);
       const recovered = prior?.requestId && prior.requestId === base.receipt?.requestId;
       if (recovered) {
-        await dbRecord(`archive:${storageKey}:${Date.now()}`,saved);
-        $("#gate-message").textContent = "ثبت درخواست قبلی در نسخه جاری صفحه تأیید شد. پیش‌نویس و تاریخچه قبلی محفوظ‌اند؛ نسخه ثبت‌شده را باز کنید. وضعیت استقرار آنلاین هنوز تأیید نشده است.";
+        $("#gate-message").textContent = "ثبت درخواست قبلی در نسخه جاری صفحه تأیید شد. پیش‌نویس اصلی و تاریخچه قبلی جایگزین نشده‌اند؛ ابتدا پشتیبان را دانلود کنید. بازکردن نسخه ثبت‌شده پس از آرشیو موفق ممکن است. وضعیت استقرار آنلاین هنوز تأیید نشده است.";
       }
       const backup = document.createElement("button"); backup.textContent = "دانلود پیش‌نویس قبلی"; backup.onclick = () => download(saved, "baran-previous-draft.json");
       const fresh = document.createElement("button"); fresh.textContent = recovered ? "باز کردن نسخه ثبت‌شده" : "شروع پیش‌نویس تازه از صفحه فعلی";
       fresh.onclick = async () => {
-        try { await dbRecord(`archive:${storageKey}:${Date.now()}`,saved); backup.remove(); fresh.remove(); await loadPage(currentPath,activeRef,true); await save(); }
+        try { await archiveDraft(saved); backup.remove(); fresh.remove(); await loadPage(currentPath,activeRef,true); await save(); }
         catch (error) { notice(error.message); }
       };
       $("#gate").append(backup, fresh);
@@ -552,6 +568,7 @@ async function loadPage(path, ref = "", fresh = false, prepared = null) {
   for (const entry of revisions.entries) { const option = document.createElement("option"); option.value = entry.sha; option.textContent = `${entry.date?.slice(0,10) || ""} ${entry.message || "نسخه قبلی"}`; $("#revisions").append(option); }
   $("#load-revision").disabled = !revisions.entries.length;
   await refreshArchives();
+  draftWritable = true;
   launch();
 }
 async function boot() {
@@ -572,8 +589,21 @@ function dbRecord(key, value) {
     const tx = db.transaction("drafts",value === undefined ? "readonly" : "readwrite");
     const request = value === undefined ? tx.objectStore("drafts").get(key) : tx.objectStore("drafts").put(value,key);
     let result; request.onsuccess = () => result = request.result;
-    tx.oncomplete = () => resolve(result); tx.onerror = () => reject(new Error("ثبت اطلاعات بازیابی درخواست ممکن نشد؛ پیش‌نویس را دانلود کنید."));
+    tx.oncomplete = () => resolve(result); tx.onerror = tx.onabort = () => reject(new Error("ثبت اطلاعات بازیابی درخواست ممکن نشد؛ پیش‌نویس را دانلود کنید."));
   });
+}
+async function archiveDraft(raw) {
+  const prefix = `archive:${storageKey}:raw-${await fingerprint(raw)}:`;
+  const keys = await new Promise((resolve,reject) => {
+    const tx = db.transaction("drafts"), request = tx.objectStore("drafts").getAllKeys();
+    request.onsuccess = () => resolve(request.result);
+    tx.onerror = tx.onabort = () => reject(new Error("آرشیو پیش‌نویس ممکن نشد؛ فایل قبلی را دانلود کنید."));
+  });
+  const existing = keys.find(key => typeof key === "string" && key.startsWith(prefix));
+  if (existing) return existing;
+  const key = prefix + Date.now();
+  await dbRecord(key,raw);
+  return key;
 }
 async function refreshArchives() {
   const keys = await new Promise((resolve,reject) => { const req = db.transaction("drafts").objectStore("drafts").getAllKeys(); req.onsuccess = () => resolve(req.result); req.onerror = reject; });
@@ -609,11 +639,19 @@ $("#check-publication").onclick = () => status().catch(error => notice(error.mes
 $("#publish").onclick = () => {
   if (sessionInfo.user.role !== "admin" || publishing) return;
   $("#publish-description").textContent = sessionInfo.mode === "local" ? "صفحه و تصاویر در پروژه محلی ذخیره می‌شوند. هیچ Push یا Deploy انجام نمی‌شود." : "صفحه و تصاویر در GitHub ثبت می‌شوند؛ روند استقرار تنظیم‌شده ممکن است آغاز شود.";
+  const unlockIds=requiredUnlocks(base.model,model());
+  $('#publish-unlock-group').hidden=!unlockIds.length;
+  $('#publish-unlock-confirm').checked=false;
+  $('#publish-unlock-count').textContent=String(unlockIds.length);
+  $('#publish-confirm').disabled=unlockIds.length>0;
   $("#publish-dialog").showModal();
 };
+$('#publish-unlock-confirm').onchange=event=>{$('#publish-confirm').disabled=!event.target.checked&&requiredUnlocks(base.model,model()).length>0;};
 $("#publish-cancel").onclick = () => $("#publish-dialog").close();
 $("#publish-confirm").onclick = async () => {
   if (publishing || sessionInfo.user.role !== "admin") return;
+  const unlockIds=requiredUnlocks(base.model,model()).sort();
+  if(unlockIds.length&&!$('#publish-unlock-confirm').checked)return notice('برای ثبت تغییرات زیر ظرف قفل‌شده، تأیید بازکردن قفل را انتخاب کنید.');
   $("#publish-dialog").close(); publishing = true;
   $(".workspace").inert = true;
   $("#publish").disabled = true; $("#publication-status").textContent = "در حال اعتبارسنجی و ثبت…";
@@ -628,11 +666,11 @@ $("#publish-confirm").onclick = async () => {
       e.content = {...e.content,src:optimized.src,width:optimized.width,height:optimized.height,variants:optimized.variants};
     }
     if (history.commit(normalized)) { render(); updateHistory(); }
-    await save();
-    const payload = clone(model()), digest = await fingerprint(payload), key = `request:${storageKey}`, prior = await dbRecord(key);
+    if(await save()===false)throw new Error('ذخیره پیش‌نویس پیش از انتشار ناموفق بود؛ ابتدا JSON را دانلود یا ذخیره را دوباره امتحان کنید.');
+    const payload = clone(model()), digest = await fingerprint(unlockIds.length?{model:payload,unlockIds}:payload), key = `request:${storageKey}`, prior = await dbRecord(key);
     publishRequest = prior?.fingerprint === digest ? prior : {requestId:crypto.randomUUID(),fingerprint:digest};
     await dbRecord(key,publishRequest);
-    const result = await api("/builder/publish",{requestId:publishRequest.requestId,model:payload});
+    const result = await api("/builder/publish",{requestId:publishRequest.requestId,model:payload,...(unlockIds.length?{unlockIds}:{})});
     if(payload.base.creation)await dbRecord(`prepared:${user}:${currentPath}`,null);
     publication = {...publishRequest,result}; await dbRecord(key,publication);
     await dbRecord(`archive:${storageKey}:${Date.now()}`,encodeDraft(history));
@@ -649,7 +687,7 @@ $('#block-search').oninput=blockLibrary;blockLibrary();
 $('#new-section').onclick=()=>insertBlock('section','page');
 for(const [key,delta]of [['#section-up',-1],['#section-down',1]])$(key).onclick=()=>{const e=selectedElement();if(!e||e.protected)return;mutate(next=>{const sections=next.sections.filter(s=>!s.protected&&!s.deleted).sort((a,b)=>a.order-b.order),i=sections.findIndex(s=>s.id===e.id),other=sections[i+delta];if(other){const a=sections[i];[a.order,other.order]=[other.order,a.order];}});};
 for(const key of ['bold','italic','underline'])$('#rich-'+key).onclick=()=>{const input=$('#text'),start=input.selectionStart,end=input.selectionEnd;mutate(next=>{const e=next.elements.find(e=>e.id===selected[0]);if(!e||e.source||e.locked)return;const text=e.content.text,a=start===end?0:start,b=start===end?text.length:end;e.content.runs=[{text:text.slice(0,a)},{text:text.slice(a,b),[key]:true},{text:text.slice(b)}].filter(r=>r.text);});};
-$('#public-preview').onclick=async()=>{if(!history||publishing)return;try{$('#public-preview').disabled=true;const result=await api('/builder/preview',{model:clone(model())});$('#output-frame').srcdoc=result.html;$('#output-dialog').showModal();}catch(error){notice(error.message);}finally{$('#public-preview').disabled=false;}};
+$('#public-preview').onclick=async()=>{if(!history||publishing)return;try{$('#public-preview').disabled=true;const result=await api('/builder/preview',{model:clone(model()),unlockIds:requiredUnlocks(base.model,model()).sort()});$('#output-frame').srcdoc=result.html;$('#output-dialog').showModal();}catch(error){notice(error.message);}finally{$('#public-preview').disabled=false;}};
 $('#output-close').onclick=()=>{$('#output-dialog').close();$('#output-frame').srcdoc='';};
 $('#guides').onchange=()=>drawSelection();
 const context={api,getModel:()=>history?.present,getSelected:()=>selected,getNode:nodeFor,getElement:element,getDevice:()=>device,getBase:()=>base,getPath:()=>currentPath,getSession:()=>sessionInfo,getUser:()=>user,mutate,select,notice,onUpdate:fn=>updateHooks.push(fn),dbRecord,save,loadPage,refreshLibrary,openPrepared:async prepared=>{const path=prepared.model.base.path;await dbRecord(`prepared:${user}:${path}`,prepared);await loadPage(path,'',true,prepared);await save();}};

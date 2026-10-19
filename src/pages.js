@@ -129,7 +129,7 @@ export async function listPages(repo, inspectPath) {
   const result = {head,pages,templates:TEMPLATES};
   if (inspectPath) {
     pagePath(inspectPath);
-    result.impact = {path:inspectPath,links:await incomingLinks(repo,head,inspectPath),protected:!records.pages.some(p => p.path === inspectPath && p.managed)};
+    result.impact = {path:inspectPath,links:await incomingLinks(repo,head,inspectPath),redirects:await incomingRedirects(repo,head,inspectPath),protected:!records.pages.some(p => p.path === inspectPath && p.managed)};
   }
   return result;
 }
@@ -247,6 +247,17 @@ async function incomingLinks(repo,head,path) {
   }
   return links;
 }
+async function incomingRedirects(repo,head,path) {
+  let content;
+  try { content=(await repo.read('public/_redirects',head)).content; }
+  catch(error) { if(error instanceof CMSFailure && error.status===404)return [];throw error; }
+  const route=routeFor(path), destinations=new Set([route,route+'index.html',route.replace(/\/$/,'')]);
+  return content.split(/\r?\n/).flatMap((line,index)=>{
+    const [from,to,status]=line.trim().split(/\s+/);
+    if(!from || from.startsWith('#') || !to || !destinations.has(hrefRoute(to)))return [];
+    return [{path:'public/_redirects',line:index+1,from,to,status:status || '302'}];
+  });
+}
 const menuSignature = records => JSON.stringify(records.pages.filter(p=>p.menuExplicit || p.managed && p.page.menu.included).map(p=>[p.path,p.status,p.page.language,p.page.visibility,p.page.menu,p.menuExplicit]).sort((a,b)=>a[0].localeCompare(b[0])));
 async function auxiliaryChanges(repo,head,records,targetHTML,targetPath,remove=[],updateNavigation=true) {
   const changes=[],tree=await repo.tree(head);
@@ -296,6 +307,8 @@ export async function pageAction(repo,body,user,localMode=false) {
     if(entry.status!=="published") throw new CMSFailure("صفحه هم‌اکنون منتشر نیست.",409);
   }
   if(body.action==="archive" || body.action==="delete") {
+    const redirects=await incomingRedirects(repo,head,path);
+    if(redirects.length) throw new CMSFailure(`این صفحه مقصد ${redirects.length} تغییرمسیر موجود است (${redirects.slice(0,3).map(r=>r.from).join('، ')}). برای جلوگیری از پیوند خراب، ابتدا تغییرمسیرها را بررسی و اصلاح کنید.`,409);
     const links=await incomingLinks(repo,head,path);
     if(links.length) throw new CMSFailure(`این صفحه ${links.length} پیوند ورودی دارد (${[...new Set(links.map(l=>routeFor(l.path)))].slice(0,3).join("، ")}). ابتدا پیوندها را اصلاح کنید؛ مقصد خودکار ساخته نمی‌شود.`,409);
     const file=await repo.read(path,head); if(repo.checkpoint) await repo.checkpoint(head,[path]);
@@ -331,8 +344,10 @@ export async function pageAction(repo,body,user,localMode=false) {
     if(entry.status!=="published") throw new CMSFailure("ابتدا صفحه را بازیابی کنید.",409);
     const patch=body.action==="rename" ? {title:body.title} : body.action==="menu" ? {menu:body.menu} : body.page;
     if(!plain(patch))throw new CMSFailure("تنظیمات صفحه معتبر نیست.");
+    if(patch.id!=null&&patch.id!==entry.page.id)throw new CMSFailure('شناسه ثابت صفحه قابل تغییر نیست.');
     const visibilityBefore=entry.page.visibility;
     entry.page=validatePageMetadata({...entry.page,...patch},path,entry.page);
+    if(entry.page.ogImage && !(await repo.tree(head)).some(item=>item.path==='public'+entry.page.ogImage))throw new CMSFailure('تصویر اشتراک‌گذاری در کتابخانه موجود نیست.');
     if(body.action==="menu" || !entry.managed && visibilityBefore!==entry.page.visibility)entry.menuExplicit=true;
     const {document}=parseHTML((await repo.read(path,head)).content);applyPageSEO(document,entry.page,path);html=document.toString();
   } else throw new CMSFailure("عملیات مدیریت صفحه پشتیبانی نمی‌شود.");

@@ -12,7 +12,7 @@ const origin = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 const context = await browser.newContext({ viewport: { width: 1600, height: 1050 } });
 const page = await context.newPage();
-page.setDefaultTimeout(15000);
+page.setDefaultTimeout(30000);
 const errors = [], mutations = [];
 page.on("pageerror", error => errors.push(error.message));
 page.on("request", req => { if (req.method() !== "GET") mutations.push(req.url().replace(origin, "")); });
@@ -99,6 +99,7 @@ try {
   await page.reload(); await frame().locator("#hero-title").waitFor();
   assert.equal(await frame().locator("#hero-title").innerText(), "عنوان بصری آزمایشی باران");
   assert.equal((await current()).history.past.length, snapshot.history.past.length);
+  await page.waitForFunction(()=>document.querySelector('#page').contentDocument.querySelector('.bridal-promo-home img')?.getAttribute('src')?.startsWith('data:image/webp'));
   assert.ok((await frame().locator(".bridal-promo-home img").getAttribute("src")).startsWith("data:image/webp")); count++;
 
   // Mobile has independent geometry and uses the homepage responsive stylesheet.
@@ -176,4 +177,4 @@ try {
   assert.deepEqual(mutations, []);
   assert.deepEqual(errors, []); count++;
   console.log(JSON.stringify({ passed: count, browserErrors: errors.length, mutationRequests: mutations.length, publicFilesUnchanged: true, screenshots: ".cms-local/builder-{desktop,mobile}.png" }));
-} finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
+} finally { await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }

@@ -6,6 +6,7 @@ import { renderBlockNode } from "../public/admin/builder/blocks.js";
 import { readPageMetadata, applyPageSEO, newPageSource, publicationChanges } from "./pages.js";
 import { digest } from "./auth.js";
 import { prepareImages } from "./builder-images.js";
+import { requiredUnlocks } from "../public/admin/builder/locks.js";
 
 // IDs depend on the original DOM location, never on editable text. Drafts are
 // pinned to a base revision; a new base requires an explicit future migration.
@@ -25,6 +26,10 @@ export function builderPage(html, revision, path = "public/index.html", editing 
   const storedNodes = new Map((stored.schemaVersion === 2 ? stored.elements || [] : []).map(e=>[e.id,e]));
   const settings = id => storedNodes.get(id) || stored[id] || {};
   const elements = [];
+  // Navigation updates may insert a new node at a selector previously occupied
+  // by another persisted element. Preserve all existing IDs before assigning a
+  // deterministic fresh ID to such new original nodes.
+  const reservedIDs=new Set([...document.querySelectorAll('[data-builder-id]')].map(node=>node.getAttribute('data-builder-id')));
   const anchors = [];
   if (!document.querySelector("main")) throw new CMSFailure("ساختار این صفحه با ویرایشگر سازگار نیست.",422);
   for (const [index, node] of [...document.querySelectorAll("header.site-header, main > section, main > article, main > header, main > div, footer")].entries()) {
@@ -42,7 +47,8 @@ export function builderPage(html, revision, path = "public/index.html", editing 
     const node = document.querySelector(selector);
     const anchor = node?.closest("[data-builder-anchor]");
     if (!node || !anchor || node.closest("svg, .skip-link")) continue;
-    const id = node.getAttribute("data-builder-id") || stableID(selector);
+    let id = node.getAttribute("data-builder-id");
+    if(!id){let attempt=0;id=stableID(selector);while(reservedIDs.has(id))id=stableID(`${selector}#${++attempt}`);reservedIDs.add(id);}
     if(storedNodes.has(id) && !storedNodes.get(id).source)continue;
     if (!/^(base-[a-z0-9]+|new-[a-zA-Z0-9-]+)$/.test(id)) throw new CMSFailure("شناسه عنصر معتبر نیست.",422);
     if (elements.some(el => el.id === id)) throw new Error("Duplicate builder ID");
@@ -67,7 +73,7 @@ export function builderPage(html, revision, path = "public/index.html", editing 
   const model = migrateModel({schemaVersion:1,base:{path,revision,title:document.title,idVersion:1},elements},null,anchors.filter(a=>!a.generated));
   model.page = {...readPageMetadata(document,path),id:document.querySelector('meta[name="builder-page-id"]')?.getAttribute('content') || stored.page?.id || stablePageID(path)};
   model.sections = anchors.filter(a=>!a.generated).map((a,i)=>({id:a.id,label:a.label,type:'container',kind:'section',tag:'section',content:{text:a.label},parentId:'page',order:i,deleted:false,locked:false,layoutMode:'flow',layouts:emptyLayout(),style:{},responsiveStyles:{tablet:{},mobile:{}},...(stored.sections?.find(s=>s.id===a.id)||{}),source:{anchor:a.id},protected:a.protected}));
-  for(const e of model.elements){const s=storedNodes.get(e.id);if(s)for(const key of ['parentId','layoutMode','responsiveStyles','responsiveInheritance','locked'])if(s[key]!=null)e[key]=clone(s[key]);}
+  for(const e of model.elements){const s=storedNodes.get(e.id);if(s)for(const key of ['parentId','layoutMode','responsiveStyles','responsiveInheritance','locked','freeLayouts'])if(s[key]!=null)e[key]=clone(s[key]);}
   for(const entry of storedNodes.values())if(!entry.source){
     if(!/^new-[a-zA-Z0-9-]+$/.test(entry.id))throw new CMSFailure('شناسه بلوک ذخیره‌شده معتبر نیست.');
     const node=document.querySelector(`[data-builder-id="${entry.id}"]`);if(!node)throw new CMSFailure('بلوک ذخیره‌شده در HTML پیدا نشد؛ داده حذف نشده است.',422);
@@ -93,7 +99,7 @@ export function builderPage(html, revision, path = "public/index.html", editing 
   base.setAttribute("href", "/");
   document.head.prepend(base);
   const style = document.createElement("style");
-  style.textContent = `html{scroll-behavior:auto!important}body{overflow-x:clip}.reveal{opacity:1!important;transform:none!important}[data-builder-id]{touch-action:none}[data-builder-added]{margin:0;box-sizing:border-box;white-space:pre-wrap;overflow-wrap:anywhere}[data-builder-added][data-builder-type=button]{display:flex;align-items:center;justify-content:center;background:#ba9555;color:white;padding:12px;border-radius:6px;text-decoration:none}[data-builder-added][data-builder-type=image]{object-fit:cover}*{animation:none!important;transition:none!important}body:has([data-builder-editing]){user-select:none}[data-builder-editing]{outline:2px solid #3b82f6!important;outline-offset:3px}[data-builder-drop]{outline:3px dashed #22a65b!important;outline-offset:-4px} [data-builder-preview] [data-builder-id]{touch-action:auto}`;
+  style.textContent = `html{scroll-behavior:auto!important}body{overflow-x:clip}.reveal{opacity:1!important;transform:none!important}[data-builder-id]{touch-action:none}[data-builder-created][data-builder-type=spacer]{pointer-events:auto!important}[data-builder-added]{margin:0;box-sizing:border-box;white-space:pre-wrap;overflow-wrap:anywhere}[data-builder-added][data-builder-type=button]{display:flex;align-items:center;justify-content:center;background:#ba9555;color:white;padding:12px;border-radius:6px;text-decoration:none}[data-builder-added][data-builder-type=image]{object-fit:cover}*{animation:none!important;transition:none!important}body:has([data-builder-editing]){user-select:none}[data-builder-editing]{outline:2px solid #3b82f6!important;outline-offset:3px}[data-builder-drop]{outline:3px dashed #22a65b!important;outline-offset:-4px} [data-builder-preview] [data-builder-id]{touch-action:auto}`;
   document.head.append(style);
   return { html: document.toString(), anchors, model, receipt:{requestId:document.querySelector('meta[name="builder-request"]')?.getAttribute("content") || null} };
 }
@@ -110,7 +116,7 @@ function replaceSchema(document, before, after) {
     try { node.textContent = JSON.stringify(visit(JSON.parse(node.textContent))).replace(/</g,"\\u003c"); } catch { throw new CMSFailure("داده ساختاریافته صفحه معتبر نیست."); }
   }
 }
-function changePicture(document, node, e, original) {
+function changePicture(document, node, e, original, preferredLCP=false) {
   node.setAttribute("alt",e.content.alt);
   if (original && original.content.src === e.content.src) return;
   const src = e.content.src, width = e.content.width, height = e.content.height;
@@ -118,7 +124,7 @@ function changePicture(document, node, e, original) {
   const variants = [...(e.content.variants || []),{src,width,height}].sort((a,b) => a.width-b.width);
   const srcset = [...new Map(variants.map(v => [v.width,v])).values()].map(v => `${v.src} ${v.width}w`).join(", ");
   const old = original?.content.src;
-  const lcp = node.getAttribute("fetchpriority") === "high" || node.classList.contains("hero-media") || e.anchor === "section-1" && !original;
+  const lcp = node.getAttribute("fetchpriority") === "high" || node.classList.contains("hero-media") || preferredLCP;
   const sizes = node.getAttribute("sizes") || (lcp ? "100vw" : "(max-width:640px) 100vw, 50vw");
   node.setAttribute("srcset",srcset); node.setAttribute("sizes",sizes);
   if (lcp) { node.setAttribute("fetchpriority","high"); node.setAttribute("loading","eager"); }
@@ -129,20 +135,35 @@ function changePicture(document, node, e, original) {
   if (old) { replaceSchema(document,old,src); replaceSchema(document,SITE+old,SITE+src); }
 }
 
+function validatePublishedLocks(previous,next,unlockIds) {
+  // Locks are editing affordances, not role permissions. The server can enforce
+  // persisted locks; a false flag explicitly unlocks a previously locked owner.
+  // Draft-only locks remain editor affordances. An explicit intent permits the
+  // legitimate unlock/edit/relock workflow without an intermediate publication.
+  const owners=new Set([...previous.sections,...previous.elements].filter(e=>e.locked===true).map(e=>e.id));
+  if(unlockIds.some(id=>!owners.has(id)))throw new CMSFailure('شناسه بازکردن قفل با نسخه پایه منتشرشده هماهنگ نیست.');
+  if(requiredUnlocks(previous,next).some(id=>!unlockIds.includes(id)))throw new CMSFailure('عنصر یا ظرف والد در نسخه منتشرشده قفل است؛ بازکردن قفل را صریحاً تأیید کنید.');
+}
+
 export async function publishBuilder(repo, body, user, localMode) {
   const path = pagePath(body?.model?.base?.path);
   if (!/^[a-zA-Z0-9-]{16,80}$/.test(body.requestId || "")) throw new CMSFailure("شناسه درخواست انتشار معتبر نیست.");
+  const unlockIds=body.unlockIds??[];
+  if(!Array.isArray(unlockIds)||unlockIds.length>2200||unlockIds.some(id=>typeof id!=='string'||!/^[a-zA-Z0-9_-]{1,100}$/.test(id))||new Set(unlockIds).size!==unlockIds.length)throw new CMSFailure('اطلاعات تأیید بازکردن قفل معتبر نیست.');
   const head = await repo.head();
-  let file;
+  let file, creating=false;
   try { file=await repo.read(path,head); }
-  catch(error){if(error.status!==404||!body.model.base.creation)throw error;file=await newPageSource(repo,body.model,head);}
-  const fingerprint = await digest(JSON.stringify(body.model));
+  catch(error){if(error.status!==404||!body.model.base.creation)throw error;file=await newPageSource(repo,body.model,head);creating=true;}
+  const fingerprint = await digest(JSON.stringify(unlockIds.length?{model:body.model,unlockIds:[...unlockIds].sort()}:body.model));
   // This receipt makes a lost-response retry idempotent without a second commit.
   const receipt = parseHTML(file.content).document;
   if (receipt.querySelector('meta[name="builder-request"]')?.getAttribute("content") === body.requestId) {
     if (receipt.querySelector('meta[name="builder-fingerprint"]')?.getAttribute("content") !== fingerprint) throw new CMSFailure("شناسه درخواست برای محتوای دیگری استفاده شده است.",409);
     return {mode:localMode?"local":"github",sha:head,path,revision:file.sha,replayed:true,publication:{commit:localMode?"local":"committed",deployment:localMode?"not_applicable":"unknown"}};
   }
+  // A creation descriptor can only authorize a vacant generated route. Accepting
+  // one on an existing page would turn a protected original into a managed page.
+  if(body.model.base.creation&&!creating)throw new CMSFailure('این مسیر هم‌اکنون وجود دارد؛ اطلاعات ساخت صفحه نمی‌تواند آن را بازنویسی کند.',409);
   if (file.sha !== body.model.base.revision) throw new CMSFailure("نسخه صفحه تغییر کرده است؛ پیش‌نویس محفوظ است. نسخه جدید را بررسی کنید.",409);
   const restore = body.model.base.restoreCommit;
   if (restore && !(localMode?/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/:/^[a-f0-9]{40}$/).test(restore)) throw new CMSFailure("نسخه بازگردانی معتبر نیست.");
@@ -152,6 +173,7 @@ export async function publishBuilder(repo, body, user, localMode) {
   if(body.model.base.creation){base.model.base.creation=clone(body.model.base.creation);base.model.page=clone(body.model.base.creation.page);}
   const model=migrateModel(body.model,base.model,base.anchors);
   if (!validModel(model,base.model,base.anchors)) throw new CMSFailure("مدل صفحه، سبک یا ساختار والدها معتبر نیست؛ پیش‌نویس محفوظ است.");
+  validatePublishedLocks(base.model,model,unlockIds);
   const original = new Map(base.model.elements.map(e => [e.id,e]));
   for (const e of model.elements) e.imageChanged = e.type === "image" && e.content.src !== original.get(e.id)?.content.src;
   const tree = await repo.tree(head);
@@ -161,6 +183,10 @@ export async function publishBuilder(repo, body, user, localMode) {
   const document = base.document, nodes = new Map(base.model.elements.map(e => [e.id,document.querySelector(`[data-builder-id="${e.id}"]`)]));
   const all=new Map([...model.sections,...model.elements].map(e=>[e.id,e]));
   const alive=e=>{if(e.deleted)return false;let p=e.parentId;while(p&&p!=='page'){const parent=all.get(p);if(parent?.deleted)return false;p=parent?.parentId;}return true;};
+  const mainImages=model.elements.filter(e=>e.type==='image'&&alive(e)&&!model.sections.some(s=>s.id===e.anchor&&s.protected));
+  const existingLCP=mainImages.find(e=>{const n=nodes.get(e.id);return e.source&&(n?.getAttribute('fetchpriority')==='high'||n?.classList.contains('hero-media'));});
+  const inHero=e=>{let p=e.parentId;while(p&&p!=='page'){const parent=all.get(p);if(parent?.kind==='hero')return true;p=parent?.parentId;}return false;};
+  const preferredLCP=(existingLCP||mainImages.find(inHero)||mainImages[0])?.id;
   const parentFor=e=>e.parentId==='page'?document.querySelector('main'):nodes.get(e.parentId)||document.querySelector(`[data-builder-anchor="${e.parentId||e.anchor}"]`);
   // Protection comes from the trusted original DOM, never the imported model.
   const protectedSections=new Set(base.model.sections.filter(s=>s.protected).map(s=>s.id));
@@ -172,7 +198,10 @@ export async function publishBuilder(repo, body, user, localMode) {
     if (!node) continue;
     const unit = node.closest("picture") || node;
     if (!alive(e)) { unit.remove(); continue; }
-    if (e.type === "image") changePicture(document,node,e,original.get(e.id));
+    if (e.type === "image") {
+      changePicture(document,node,e,original.get(e.id),e.id===preferredLCP);
+      if(!e.source){node.setAttribute('loading',e.id===preferredLCP?'eager':'lazy');if(e.id===preferredLCP)node.setAttribute('fetchpriority','high');else node.removeAttribute('fetchpriority');}
+    }
     else if (e.source) e.source.textNodes.forEach((index,i) => { const text = node.childNodes[index]; if (text?.nodeType === 3) text.textContent = i ? "" : e.content.text; });
     else if(['text','heading','button'].includes(e.type)){const replacement=renderBlockNode(document,e);node.replaceChildren(...replacement.childNodes);}
     if (e.content.href != null) node.setAttribute("href",e.content.href);
@@ -210,11 +239,11 @@ export async function publishBuilder(repo, body, user, localMode) {
 
 // The same validator/renderer produces a public preview, with commit intercepted.
 // No repository ref, static page, registry or asset is written by this endpoint.
-export async function previewBuilder(repo,model,user){
+export async function previewBuilder(repo,model,user,unlockIds){
  let captured=[];
  const previewRepo=Object.create(repo);
  previewRepo.commit=async(head,changes)=>{captured=changes;return {sha:head,mode:'preview'};};
- await publishBuilder(previewRepo,{model,requestId:crypto.randomUUID()},user,true);
+ await publishBuilder(previewRepo,{model,requestId:crypto.randomUUID(),unlockIds},user,true);
  let html=captured.find(c=>c.path===model.base.path)?.content;
  if(typeof html!=='string')throw new CMSFailure('ساخت پیش‌نمایش ممکن نشد.');
  for(const file of captured.filter(c=>c.encoding==='base64')){const url='/'+file.path.slice(7),mime=file.path.endsWith('.png')?'image/png':file.path.endsWith('.jpg')?'image/jpeg':'image/webp';html=html.split(url).join(`data:${mime};base64,${file.content}`);}

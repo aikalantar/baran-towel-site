@@ -34,3 +34,14 @@ export function allowsLockedChanges(previous, next) {
     return old && (old.parentId || old.anchor)===parent || !lockedBy(previous,parent);
   });
 }
+
+// Publication compares a trusted, persisted baseline with a complete model. A
+// separate explicit intent is needed when an owner ends the session locked again
+// after legitimate unlock/edit/relock operations. This is not a role permission.
+export function requiredUnlocks(previous,next) {
+  const before=new Map(nodes(previous).map(e=>[e.id,e])),after=new Map(nodes(next).map(e=>[e.id,e]));
+  const stable=value=>Array.isArray(value)?value.map(stable):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>[k,stable(v)])):value;
+  const equal=(a,b)=>JSON.stringify(stable(a))===JSON.stringify(stable(b));
+  const beneath=(map,id,owner)=>{const seen=new Set();while(id&&!seen.has(id)){if(id===owner)return true;seen.add(id);const e=map.get(id);id=e?.parentId||e?.anchor;}return false;};
+  return [...before.values()].filter(owner=>owner.locked===true&&after.get(owner.id)?.locked===true&&[...new Set([...before.keys(),...after.keys()])].some(id=>(beneath(before,id,owner.id)||beneath(after,id,owner.id))&&!equal(before.get(id),after.get(id)))).map(e=>e.id);
+}
