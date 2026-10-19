@@ -16,14 +16,14 @@
         "visibility": "unlisted",
         "ogTitle": "آزمون موقت انتشار Builder V2",
         "ogDescription": "صفحهٔ موقت کنترل انتشار؛ پس از آزمون حذف می‌شود.",
-        "ogImage": "",
+        "ogImage": "/assets/images/home/baran-hero.webp",
         "menu": {
           "included": false,
           "label": "آزمون موقت انتشار Builder V2",
           "order": 0
         }
       },
-      "updated": "2026-10-19T03:37:14.231Z",
+      "updated": "2026-10-19T03:40:08.835Z",
       "menuExplicit": false
     }
   ],
