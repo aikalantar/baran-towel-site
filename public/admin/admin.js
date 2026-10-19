@@ -1,4 +1,8 @@
+import {createDraftSafety,installDraftRecovery} from './draft-safety.js';
 const $ = (selector, root = document) => root.querySelector(selector);
+const draftSafety=createDraftSafety();
+const draftRecovery=installDraftRecovery({retry:()=>saveDraft(),exportDraft:()=>exportDraft()});
+let draftSaveChain=Promise.resolve();
 const esc = (value = "") =>
   String(value).replace(
     /[&<>"']/g,
@@ -120,8 +124,9 @@ function database() {
     request.onerror = () => reject(request.error);
   }));
 }
+const editingContacts=()=>state.view==='contacts'&&!!$('#contacts-form');
 const draftKey = () =>
-  `${state.session?.user?.username || "unknown"}:${state.article ? "new-article" : state.page?.path || ""}`;
+  `${state.session?.user?.username || "unknown"}:${editingContacts()?'contacts':state.article ? "new-article" : state.page?.path || ""}`;
 async function draftRead(key) {
   const db = await database();
   return new Promise((resolve, reject) => {
@@ -137,7 +142,7 @@ async function draftWrite(key, value) {
     const store = tx.objectStore("drafts");
     value === null ? store.delete(key) : store.put(value, key);
     tx.oncomplete = resolve;
-    tx.onerror = () => reject(tx.error);
+    tx.onerror = tx.onabort = () => reject(tx.error || new Error('ثبت پیش‌نویس متوقف شد.'));
   });
 }
 function draftSnapshot() {
@@ -147,23 +152,32 @@ function draftSnapshot() {
     article: state.article,
     operations: state.operations,
     images: state.images,
+    ...(editingContacts()?{contacts:{head:state.contacts.head,values:Object.fromEntries(new FormData($('#contacts-form')))}}:{}),
     savedAt: Date.now(),
   };
 }
 async function saveDraft(silent = false) {
   clearTimeout(saveTimer);
-  if (!state.page && !state.article) return;
+  saveTimer=null;
+  if (!state.page && !state.article&&!editingContacts()) return true;
   try {
-    await draftWrite(draftKey(), draftSnapshot());
+    const key=draftKey(),snapshot=structuredClone(draftSnapshot()),revision=draftSafety.revision;
+    const write=draftSaveChain.catch(()=>{}).then(()=>draftWrite(key,snapshot));draftSaveChain=write;
+    await write;draftSafety.saved(revision);if(!draftSafety.atRisk)draftRecovery.clear();
     const el = $("#draft-status");
     if (el) el.textContent = "پیش‌نویس در این مرورگر ذخیره شد";
     if (!silent)
       notice("پیش‌نویس ذخیره شد. هنوز تغییری روی سایت منتشر نشده است.");
+    return true;
   } catch {
     notice("مرورگر نتوانست پیش‌نویس را ذخیره کند. یک نسخه دانلود کنید.", true);
+    draftRecovery.show('ذخیره انجام نشد؛ تغییرات تازه فقط در این تب هستند. دوباره تلاش کنید یا پیش از خروج JSON را دانلود کنید.');
+    return false;
   }
 }
+async function ensureDraftSaved(){let version;do{version=state.draftVersion;if(await saveDraft(true)===false)throw new Error('برای حفظ کارتان، ابتدا ذخیره را دوباره امتحان کنید یا JSON را دانلود کنید؛ صفحه عوض نشد.');}while(version!==state.draftVersion);}
 function changed() {
+  draftSafety.changed();
   state.draftVersion++;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => saveDraft(true), 600);
@@ -319,7 +333,7 @@ function renderEditor() {
   );
 }
 async function openPage(path, ref) {
-  await saveDraft(true);
+  await ensureDraftSaved();
   state.view = path.includes("/catalog/")
     ? "catalog"
     : path.includes("/blog/")
@@ -330,13 +344,13 @@ async function openPage(path, ref) {
   const page = await api(
     `/page?path=${encodeURIComponent(path)}${ref ? "&ref=" + ref : ""}`,
   );
+  const draft=ref?null:await draftRead(`${state.session.user.username}:${path}`);
   state.page = page;
   state.original = structuredClone(page);
   state.operations = [];
   state.images = [];
   state.article = null;
   if (!ref) {
-    const draft = await draftRead(draftKey()).catch(() => null);
     if (draft?.page?.path === path) {
       state.page = draft.page;
       state.original = draft.original;
@@ -350,7 +364,9 @@ async function openPage(path, ref) {
       else notice("پیش‌نویس قبلی شما بازیابی شد.");
     }
   }
+  draftSafety.reset();draftRecovery.clear();
   renderEditor();
+  if(ref)changed();
   window.scrollTo(0, 0);
 }
 async function showPreview() {
@@ -616,7 +632,8 @@ function renderArticle() {
   );
 }
 async function newArticle() {
-  await saveDraft(true);
+  await ensureDraftSaved();
+  const draft=await draftRead(`${state.session.user.username}:new-article`);
   state.page = null;
   state.original = null;
   state.operations = [];
@@ -632,12 +649,12 @@ async function newArticle() {
     width: 900,
     height: 1200,
   };
-  const draft = await draftRead(draftKey()).catch(() => null);
   if (draft?.article) {
     state.article = draft.article;
     state.images = draft.images || [];
     notice("پیش‌نویس مقاله قبلی بازیابی شد.");
   }
+  draftSafety.reset();draftRecovery.clear();
   renderArticle();
 }
 async function renderHistory(path) {
@@ -652,7 +669,8 @@ async function renderHistory(path) {
   );
 }
 async function renderContacts() {
-  state.contacts = await api("/contacts");
+  const contacts=await api("/contacts"),draft=await draftRead(`${state.session.user.username}:contacts`);
+  state.contacts=draft?.contacts||contacts;
   const labels = {
     phone: "شماره تماس با کد کشور",
     email: "ایمیل",
@@ -678,6 +696,8 @@ async function renderContacts() {
           "",
         )}<button class="btn primary" type="submit">${state.session.mode === "local" ? "ذخیره اطلاعات در پروژه" : "انتشار اطلاعات تماس"}</button></form></div>`,
   );
+  draftSafety.reset();draftRecovery.clear();
+  if(draft?.contacts&&draft.contacts.head!==contacts.head)notice('نسخه سایت جدیدتر از پیش‌نویس تماس است؛ مقادیر قبلی حفظ شدند. پیش از ثبت آن‌ها را بررسی کنید.',true);
 }
 function renderHelp() {
   shell(
@@ -691,7 +711,7 @@ function renderLogin() {
     `<main id="content" class="login-page"><section class="login-form"><div class="brand"><img src="/assets/images/brand/baran-logo.c01f592bc1.png" alt="باران" width="52" height="52"><div><strong>مدیریت باران</strong><small>LUXTOWELCO</small></div></div><h1>به فضای مدیریت خوش آمدید.</h1><p>برای ویرایش محتوا و تصاویر سایت وارد شوید.</p>${!configured ? '<div class="banner">ورود پنل هنوز فعال نشده است. مسئول فنی باید حساب‌های مدیر و دسترسی امن انتشار را روی سرور تنظیم کند.</div>' : ""}<form id="login-form"><div class="form-group"><label for="username">نام کاربری</label><input id="username" name="username" dir="ltr" autocomplete="username" maxlength="50" required></div><div class="form-group"><label for="password">رمز عبور</label><input id="password" name="password" type="password" dir="ltr" autocomplete="current-password" maxlength="200" required></div><p id="login-error" role="alert" class="subtle"></p><button class="btn primary" type="submit" ${!configured ? "disabled" : ""}>ورود به پنل ${icon("arrow")}</button></form><p class="login-note">این فضا خصوصی است. برای دریافت یا تغییر رمز با مدیر سایت تماس بگیرید.</p><a class="btn text" href="/">بازگشت به سایت</a></section><aside class="login-art"><img src="/assets/images/home/baran-hero.webp" width="896" height="1194" alt="تن‌پوش سبز باران"><div class="login-art-copy"><h2>روایت باران، در دست شما.</h2><p>هر تصویر تازه و هر کلمه، بخشی از تجربه‌ای است که می‌سازید.</p></div></aside></main>`;
 }
 async function navigate(view) {
-  await saveDraft(true);
+  await ensureDraftSaved();
   state.view = view;
   state.filter = "";
   if (view === "catalog")
@@ -833,6 +853,7 @@ async function duplicateModel(id) {
 }
 document.addEventListener("input", (event) => {
   const target = event.target;
+  if(target.closest('#contacts-form')){changed();return;}
   if (target.dataset.field) {
     const field = state.page.fields.find((f) => f.id === target.dataset.field);
     field.value = target.value;
@@ -885,7 +906,7 @@ document.addEventListener("click", async (event) => {
       return;
     }
     if (button.dataset.tab) {
-      await saveDraft(true);
+      await ensureDraftSaved();
       state.tab = button.dataset.tab;
       state.filter = "";
       renderEditor();
@@ -953,7 +974,7 @@ document.addEventListener("click", async (event) => {
       state.busy = true;
       button.disabled = true;
       try {
-        await saveDraft(true);
+        await ensureDraftSaved();
         await publish();
       } finally {
         state.busy = false;
@@ -972,13 +993,15 @@ document.addEventListener("click", async (event) => {
     ) {
       const path = state.page.path;
       clearTimeout(saveTimer);
+      await draftSaveChain.catch(()=>{});
       await draftWrite(draftKey(), null);
+      draftSafety.reset();draftRecovery.clear();saveTimer=null;
       state.page = null;
       state.original = null;
       await openPage(path);
     }
     if (action === "logout") {
-      await saveDraft(true);
+      await ensureDraftSaved();
       await api("/logout", {});
       state.session.user = null;
       renderLogin();
@@ -1018,21 +1041,26 @@ document.addEventListener("submit", async (event) => {
       return;
     const button = $('button[type="submit"]', event.target);
     button.disabled = true;
+    const app=$('#app');state.busy=true;app.inert=true;let committed=false;
     try {
+      await ensureDraftSaved();
       const values = Object.fromEntries(new FormData(event.target));
       await api("/contacts", { head: state.contacts.head, values });
+      committed=true;
+      await draftWrite(`${state.session.user.username}:contacts`,null);
       state.library = await api("/library");
       await renderContacts();
       notice("اطلاعات تماس ثبت شد.");
     } catch (error) {
-      notice(error.message, true);
+      notice(committed?'اطلاعات تماس ثبت شد؛ پاک‌سازی پیش‌نویس یا تازه‌سازی پنل انجام نشد. دوباره منتشر نکنید؛ نسخهٔ محلی را برای بررسی نگه دارید.':error.message, true);
     } finally {
+      state.busy=false;app.inert=false;
       button.disabled = false;
     }
   }
 });
 window.addEventListener("beforeunload", (event) => {
-  if (state.busy || saveTimer) {
+  if (state.busy) {
     event.preventDefault();
     event.returnValue = "";
   }

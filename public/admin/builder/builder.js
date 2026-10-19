@@ -7,13 +7,17 @@ import {installProfessionalControls,cloneSubtrees,subtreeIds,selectedRoots} from
 import {installPagesUI} from './pages-ui.js';
 import {installCustomerUI} from './customer-ui.js';
 import {lockedBy,allowsLockedChanges,requiredUnlocks} from './locks.js';
+import {createDraftSafety,installDraftRecovery} from '../draft-safety.js';
+import {publicationMessage} from './publication-status.js';
 
 const $ = selector => document.querySelector(selector);
 const frame = $("#page");
+const draftSafety=createDraftSafety();
+const draftRecovery=installDraftRecovery({retry:()=>save(),exportDraft:()=>download(encodeDraft(history))});
 let base, history, library, db, storageKey, user, doc, selected = [], device = "desktop", preview = false;
 let gesture = null, saveTimer, noticeTimer, locked = false, draftWritable = false, saveChain = Promise.resolve(), originals = new Map();
 let sessionInfo, currentPath = "public/index.html", activeRef = "", sessionTimer, publishing = false, publishRequest = null, publication = null;
-let customerUI, selectionPending = false;
+let customerUI, selectionPending = false,publicationTimer;
 const updateHooks=[];
 const notifyControls=()=>{if(history&&doc)for(const fn of updateHooks)fn();};
 const model = () => history.present;
@@ -60,18 +64,21 @@ function save() {
   // A rejected draft stays read-only until its raw data is archived and the
   // user explicitly starts over. Visibility/pagehide must never replace it.
   if (locked || !history || !draftWritable) return Promise.resolve(true);
-  const raw = encodeDraft(history);
+  let raw;try{raw=encodeDraft(history);}catch(error){return Promise.resolve(saveFailed(error));}
   const key = storageKey;
+  const revision=draftSafety.revision;
   $("#save-status").textContent = "در حال ذخیره…";
   saveChain = saveChain.catch(() => {}).then(() => new Promise((resolve, reject) => {
     const transaction = db.transaction("drafts", "readwrite");
     transaction.objectStore("drafts").put(raw, key);
-    transaction.oncomplete = () => { $("#save-status").textContent = "پیش‌نویس در این مرورگر ذخیره شد"; resolve(true); };
+    transaction.oncomplete = () => { draftSafety.saved(revision);if(!draftSafety.atRisk)draftRecovery.clear();$("#save-status").textContent = draftSafety.atRisk?"تغییرات تازه در حال ذخیره…":"پیش‌نویس در این مرورگر ذخیره شد"; resolve(true); };
     transaction.onerror = transaction.onabort = () => reject(new Error("ذخیره انجام نشد؛ فضای مرورگر کافی نیست. پیش‌نویس را دانلود کنید."));
   }));
-  return saveChain.catch(error => { $("#save-status").textContent = "ذخیره ناموفق — پیش‌نویس را دانلود کنید"; notice(error.message); return false; });
+  return saveChain.catch(saveFailed);
 }
+function saveFailed(error){$("#save-status").textContent="ذخیره ناموفق — پیش‌نویس را دانلود کنید";draftRecovery.show('ذخیره در مرورگر انجام نشد. تغییرات تازه فقط در این تب هستند؛ دوباره ذخیره کنید یا پیش از خروج JSON را دانلود کنید.');notice(error.message);return false;}
 function changed() {
+  draftSafety.changed();
   $("#save-status").textContent = "تغییرات در حال ذخیره…";
   // Queue a transaction immediately so a refresh after an operation retains it.
   save();
@@ -495,10 +502,11 @@ $("#import").onchange = async event => {
   } catch (error) { notice(error.message); }
   event.target.value = "";
 };
-window.addEventListener("pagehide", () => { if (history) save(); });
-document.addEventListener("visibilitychange", () => { if (document.hidden && history) save(); else if (history) checkSession(); });
+window.addEventListener("pagehide", () => { if (history&&draftSafety.atRisk) save(); });
+document.addEventListener("visibilitychange", () => { if (document.hidden && history&&draftSafety.atRisk) save(); else if (!document.hidden&&history) checkSession(); });
 
 function lock(message) {
+  if(draftSafety.atRisk)draftRecovery.show('دسترسی متوقف شده است و تغییرات تازه هنوز ذخیره نشده‌اند؛ پیش از خروج JSON پیش‌نویس را دانلود کنید.',false);
   locked = true;
   $("#builder").hidden = true;
   $("#gate").hidden = false;
@@ -520,13 +528,15 @@ function launch() {
 }
 async function loadPage(path, ref = "", fresh = false, prepared = null) {
   if (publishing) return;
-  if (history && storageKey && await save()===false)throw new Error('ذخیره پیش‌نویس ناموفق بود؛ پیش از تعویض صفحه، JSON را دانلود یا ذخیره را دوباره امتحان کنید.');
+  if(locked&&draftSafety.atRisk)throw new Error('دسترسی متوقف شده است؛ پیش از خروج JSON را دانلود کنید.');
+  if(history&&storageKey){do{if(await save()===false)throw new Error('ذخیره پیش‌نویس ناموفق بود؛ پیش از تعویض صفحه، JSON را دانلود یا ذخیره را دوباره امتحان کنید.');}while(draftSafety.atRisk);}
   const priorDraftWritable = draftWritable;
   draftWritable = false;
   frame.hidden=true;$('.workspace').inert=true;
   let next=prepared;
   if(!next){try{next=await api(`/builder?path=${encodeURIComponent(path)}${ref ? `&ref=${ref}` : ""}`);}catch(error){if(error.status===404&&!ref)next=await dbRecord(`prepared:${user}:${path}`);if(!next){draftWritable=priorDraftWritable;frame.hidden=false;$('.workspace').inert=false;throw error;}}}
   base = next; currentPath = path; activeRef = ref;
+  clearTimeout(publicationTimer);
   const address = new URL(location.href); address.searchParams.set("path",path);
   if (ref) address.searchParams.set("ref",ref); else address.searchParams.delete("ref");
   window.history.replaceState(null,"",address);
@@ -578,6 +588,7 @@ async function loadPage(path, ref = "", fresh = false, prepared = null) {
   $("#load-revision").disabled = !revisions.entries.length;
   await refreshArchives();
   draftWritable = true;
+  draftSafety.reset();draftRecovery.clear();
   launch();
 }
 async function boot() {
@@ -630,12 +641,13 @@ async function fingerprint(value) {
 async function status() {
   if (!publication?.result) return;
   if (publication.result.mode === "local") { $("#publication-status").textContent = "در فایل‌های محلی ثبت شد؛ هیچ استقرار آنلاینی انجام نشده است."; return; }
-  const result = await api(`/builder/status?sha=${encodeURIComponent(publication.result.sha)}`);
-  const labels = {success:"گزارش موفق استقرار production از Cloudflare در GitHub تأیید شد.",failure:"استقرار شکست خورده است؛ ثبت GitHub محفوظ است.",error:"خطای استقرار گزارش شده است.",pending:"استقرار در انتظار است.",queued:"استقرار در صف است.",in_progress:"استقرار در حال اجراست.",inactive:"این استقرار دیگر فعال نیست.",superseded:"نسخه جدیدتری در شاخه ثبت شده است؛ این وضعیت نسخه جاری سایت را تأیید نمی‌کند.",unknown:"استقرار قابل تأیید نیست؛ وضعیت Cloudflare را بررسی کنید."};
-  const stages={commit_created:'مرحله: ثبت commit.',deployment_started:'مرحله: استقرار آغاز شده.',deployment_verified:'مرحله: استقرار تأییدشده.',deployment_failed:'مرحله: خطای استقرار.',unverified:'مرحله: نیازمند بررسی.'};
-  const checked=Number.isFinite(Date.parse(result.checkedAt))?` آخرین بررسی: ${new Date(result.checkedAt).toLocaleTimeString('fa-IR')}.`:'';
-  $("#publication-status").textContent = `${result.commit === "committed" ? "ثبت GitHub تأیید شد." : "تأیید دوباره commit در دسترس نیست."} ${stages[result.stage]||''} ${labels[result.deployment] || labels.unknown}${checked}`;
+  const sha=publication.result.sha;
+  let result;try{result=await api(`/builder/status?sha=${encodeURIComponent(sha)}`);}catch{result={commit:'committed',deployment:'unknown'};}
+  if(publication?.result.sha!==sha)return;
+  $("#publication-status").textContent=publicationMessage(result);
+  return result;
 }
+async function monitorPublication(sha,attempt=0){clearTimeout(publicationTimer);const result=await status();if(publication?.result.sha!==sha||attempt>=5||['success','failure','error','inactive','superseded'].includes(result?.deployment))return;publicationTimer=setTimeout(()=>monitorPublication(sha,attempt+1),10000);}
 $("#page-selector").onchange = event => loadPage(event.target.value).catch(error => { $("#page-selector").value = currentPath; notice(error.message); });
 $("#load-revision").onclick = () => loadPage(currentPath,$("#revisions").value).catch(error => notice(error.message));
 $("#load-current").onclick = () => loadPage(currentPath).catch(error => notice(error.message));
@@ -644,7 +656,7 @@ $("#continue-editing").onclick = async () => {
   await dbRecord(`archive:${storageKey}:${Date.now()}`,encodeDraft(history));
   await loadPage(currentPath,"",true); await save();
 };
-$("#check-publication").onclick = () => status().catch(error => notice(error.message));
+$("#check-publication").onclick = async()=>{const button=$("#check-publication");button.disabled=true;try{await status();}finally{button.disabled=false;}};
 $("#publish").onclick = () => {
   if (sessionInfo.user.role !== "admin" || publishing) return;
   $("#publish-description").textContent = sessionInfo.mode === "local" ? "صفحه و تصاویر در پروژه محلی ذخیره می‌شوند. هیچ Push یا Deploy انجام نمی‌شود." : "صفحه و تصاویر در GitHub ثبت می‌شوند؛ روند استقرار تنظیم‌شده ممکن است آغاز شود.";
@@ -674,7 +686,7 @@ $("#publish-confirm").onclick = async () => {
       const optimized = await optimizeImage(new File([bytes],"builder-image",{type:mime}));
       e.content = {...e.content,src:optimized.src,width:optimized.width,height:optimized.height,variants:optimized.variants};
     }
-    if (history.commit(normalized)) { render(); updateHistory(); }
+    if (history.commit(normalized)) { draftSafety.changed();render(); updateHistory(); }
     if(await save()===false)throw new Error('ذخیره پیش‌نویس پیش از انتشار ناموفق بود؛ ابتدا JSON را دانلود یا ذخیره را دوباره امتحان کنید.');
     const payload = clone(model()), digest = await fingerprint(unlockIds.length?{model:payload,unlockIds}:payload), key = `request:${storageKey}`, prior = await dbRecord(key);
     publishRequest = prior?.fingerprint === digest ? prior : {requestId:crypto.randomUUID(),fingerprint:digest};
@@ -686,6 +698,7 @@ $("#publish-confirm").onclick = async () => {
     preview = true; document.body.classList.add("preview"); $("#preview").setAttribute("aria-pressed","true");
     $("#continue-editing").hidden = false; $("#check-publication").hidden = result.mode === "local";
     $("#publication-status").textContent = result.mode === "local" ? "در فایل‌های محلی ثبت شد؛ هیچ استقرار آنلاینی انجام نشده است." : "ثبت GitHub موفق بود؛ وضعیت استقرار هنوز تأیید نشده است.";
+    if(result.mode!=='local')monitorPublication(result.sha);
     drawSelection(); updateHistory();
   } catch (error) { $("#publication-status").textContent = `${error.message} پیش‌نویس و تاریخچه حفظ شدند.`; notice(error.message); }
   finally { publishing = false; $(".workspace").inert = false; $("#publish").disabled = !!publication?.result || sessionInfo.user.role !== "admin"; updateHistory(); properties(); }

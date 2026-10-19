@@ -154,9 +154,16 @@ function validateCreation(creation,path) {
   validatePageMetadata(creation.page,path);
   return creation;
 }
+function repairShellContacts(document,creation){
+  if(document.getElementById('partnership'))return false;
+  let changed=false;
+  for(const link of document.querySelectorAll('header.site-header a[href="#partnership"],.drawer-nav a[href="#partnership"],footer a[href="#partnership"]')){link.setAttribute('href',creation.path.startsWith('public/en/')?'/en/#partnership':'/#partnership');changed=true;}
+  return changed;
+}
 function trustedSource(content, creation) {
   const {document} = parseHTML(content), main = document.querySelector("main");
   if (!main) throw new CMSFailure("پوسته انتخابی بخش اصلی سازگار ندارد.");
+  const sourceIDs = new Set([...document.querySelectorAll('[id]')].map(node=>node.id));
   for (const node of document.querySelectorAll('meta[name="builder-request"],meta[name="builder-fingerprint"],meta[name="builder-page-id"],link[rel="alternate"],script[type="application/ld+json"]')) node.remove();
   if (creation.kind !== "duplicate") {
     for (const node of document.querySelectorAll('#builder-state,#builder-layout,link[rel="preload"][as="image"]')) node.remove();
@@ -169,6 +176,19 @@ function trustedSource(content, creation) {
     make("h1",creation.title,section); make("p",creation.description || (creation.language === "en" ? "Edit this page visually." : "محتوای صفحه را به‌صورت دیداری ویرایش کنید."),section);
     if (creation.template === "hero") { const button=make("a",creation.language === "en" ? "Explore our collection" : "مشاهده مجموعه",section); button.className="button-link"; button.setAttribute("href",creation.language === "en" ? "/en/catalog/" : "/catalog/"); }
     if (creation.template === "content") for (let i=1;i<=2;i++) { const next=make("section","",main); next.className="section"; next.setAttribute("data-builder-anchor",`page-content-${i}`); make("h2",creation.language === "en" ? `Section ${i}` : `بخش ${i}`,next); make("p",creation.language === "en" ? "Your page content." : "متن دلخواه این بخش.",next); }
+  }
+  // Shell links were authored against the source, before main was replaced.
+  for (const link of document.querySelectorAll('a[href]')) {
+    const href=link.getAttribute('href');
+    if(href.startsWith('#')) {
+      let id;try{id=decodeURIComponent(href.slice(1));}catch{continue;}
+      if(!id || document.getElementById(id))continue;
+      const destination=sourceIDs.has(id)?routeFor(creation.sourcePath):creation.language==='en'?'/en/':'/';
+      link.setAttribute('href',destination+(sourceIDs.has(id)||id==='partnership'?href:''));
+    } else if(href&&!/^(?:[a-z][a-z0-9+.-]*:|\/)/i.test(href)) {
+      const url=new URL(href,SITE+routeFor(creation.sourcePath));
+      link.setAttribute('href',url.pathname+url.search+url.hash);
+    }
   }
   // A new page has no genuine translation yet. Language switch points to the
   // existing language homepage rather than claiming a nonexistent counterpart.
@@ -276,6 +296,9 @@ async function auxiliaryChanges(repo,head,records,targetHTML,targetPath,remove=[
 export async function publicationChanges(repo,head,model,html) {
   const path=pagePath(model.base.path);
   if (!model.page && !model.base.creation) return [];
+  // Also repair inherited shell fields in an older prepared draft whose model
+  // still contains the old fragment. Existing customer pages are not rewritten.
+  if(model.base.creation){const {document}=parseHTML(html);if(repairShellContacts(document,model.base.creation))html=document.toString();}
   const records=await registry(repo,head),beforeMenu=menuSignature(records),existing=records.pages.find(entry=>entry.path===path);
   const page=validatePageMetadata(model.page || model.base.creation.page,path,readPageMetadata(parseHTML(html).document,path));
   if (page.ogImage && !(await repo.tree(head)).some(entry=>entry.path === "public"+page.ogImage) && !model.elements?.some(e=>e.type === "image" && e.content.src === page.ogImage)) throw new CMSFailure("تصویر اشتراک‌گذاری در کتابخانه موجود نیست.");
