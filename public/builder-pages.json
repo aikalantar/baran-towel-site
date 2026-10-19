@@ -30,6 +30,31 @@
         "revision": "aacb12473128daae9e8eaa4fca04a4f0f016786c",
         "fileSha": "4c732d70f4d31fd68911c4260e3f254b6c7512d4"
       }
+    },
+    {
+      "path": "public/cms-stability-canary-20261019-t11/index.html",
+      "status": "published",
+      "managed": true,
+      "page": {
+        "id": "page-e13fe6ae-95cf-4ccd-a84d-d9abd01e5af3",
+        "title": "آزمون موقت تثبیت CMS",
+        "description": "صفحهٔ موقت آزمون production؛ پس از بررسی حذف می‌شود.",
+        "language": "fa",
+        "direction": "rtl",
+        "canonical": "https://luxtowelco.com/cms-stability-canary-20261019-t11/",
+        "robots": "noindex",
+        "visibility": "unlisted",
+        "ogTitle": "آزمون موقت تثبیت CMS",
+        "ogDescription": "صفحهٔ موقت آزمون production؛ پس از بررسی حذف می‌شود.",
+        "ogImage": "",
+        "menu": {
+          "included": false,
+          "label": "آزمون موقت تثبیت CMS",
+          "order": 0
+        }
+      },
+      "updated": "2026-10-19T12:13:55.423Z",
+      "menuExplicit": false
     }
   ],
   "requests": [
