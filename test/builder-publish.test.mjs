@@ -19,8 +19,8 @@ test("publishing uses real GitHub tree/commit/CAS protocol atomically and preser
   const title = model.elements.find(e => e.tag === "h1"); title.content.text = "عنوان منتشرشده آزمایشی"; title.layouts.desktop = {x:3,y:-2,width:55,height:15}; title.layouts.mobile = {x:1,y:0,width:80,height:12};
   const target = model.elements.find(e => e.type === "image" && e.content.src.includes("home/baran-hero.webp"));
   target.content = {src:"data:image/png;base64," + (await fs.readFile("public/favicon-32x32-v2.png")).toString("base64"),alt:"تصویر منتشرشده",variants:[{src:"data:image/png;base64,"+(await fs.readFile("public/favicon-16x16-v2.png")).toString("base64"),width:16,height:16}]};
-  const moved = model.elements.find(e => e.tag === "h2" && e.anchor !== title.anchor && e.movable); moved.anchor = title.anchor; moved.free = true; moved.layouts.desktop = {x:10,y:25,width:60,height:20}; moved.order = 2;
-  const added = {id:"new-fixture-added",type:"button",tag:"a",anchor:title.anchor,source:null,content:{text:"دکمه واقعی",href:"/catalog/"},layouts:{desktop:{x:5,y:10,width:20,height:10},mobile:{x:5,y:10,width:70,height:10}},style:{color:"#ffffff",fontSize:18},z:10,deleted:false};
+  const moved = model.elements.find(e => e.tag === "h2" && e.anchor !== title.anchor && e.movable); moved.anchor = title.anchor; moved.parentId=title.anchor;moved.free = true; moved.layouts.desktop = {x:10,y:25,width:60,height:20}; moved.order = 2;
+  const added = {id:"new-fixture-added",type:"button",tag:"a",anchor:title.anchor,parentId:title.anchor,source:null,content:{text:"دکمه واقعی",href:"/catalog/"},layouts:{desktop:{x:5,y:10,width:20,height:10},tablet:{},mobile:{x:5,y:10,width:70,height:10}},style:{color:"#ffffff",fontSize:18},z:10,deleted:false};
   model.elements.push(added);
   const deleted = model.elements.find(e => e.tag === "figcaption"); deleted.deleted = true;
   const request = payload(model), response = await publishBuilder(repo,request,admin,false);
@@ -84,7 +84,7 @@ test("all nine pages retain language/SEO and can be edited generically; historic
 
 test("structural operations and responsive geometry remain undoable through 120-step recovery", async () => {
   const {repo} = await githubSimulation(), page = await pageFor(repo), h = new History(page.model), target = page.model.elements.find(e => e.movable && e.type === "heading"), destination = page.anchors.find(a => a.id !== target.anchor).id;
-  for (let i=0;i<120;i++) { const next = clone(h.present), e = next.elements.find(e => e.id === target.id); e.anchor = destination; e.free = true; e.order = i; e.layouts.desktop = {x:i/10,y:5,width:40,height:10}; h.commit(next); }
+  for (let i=0;i<120;i++) { const next = clone(h.present), e = next.elements.find(e => e.id === target.id); e.anchor = destination;e.parentId=destination; e.free = true; e.order = i; e.layouts.desktop = {x:i/10,y:5,width:40,height:10}; h.commit(next); }
   const restored = decodeDraft(encodeDraft(h),page.model,page.anchors);
   for(let i=0;i<120;i++) assert.ok(restored.undo());
   assert.equal(restored.present.elements.find(e=>e.id===target.id).anchor,target.anchor);

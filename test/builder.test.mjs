@@ -22,10 +22,10 @@ test("builder retains real homepage structure and styles without active content"
   assert.ok(initial.elements.length > 40);
   assert.ok(validModel(initial, initial, page.anchors));
 });
-test("stable IDs survive content edits; originals are never mutated", () => {
+test("stable IDs survive content edits; originals are never mutated", async () => {
   const edited = builderPage(home.replace("باران؛ فراتر از حوله</h1>", "عنوان دیگر</h1>"), "test-base-revision");
   assert.deepEqual(edited.model.elements.map(e => e.id), initial.elements.map(e => e.id));
-  assert.equal(home.includes("data-builder-id"), false);
+  assert.equal(await fs.readFile('public/index.html','utf8'),home);
 });
 test("mixed operations undo and redo beyond 100 entries and survive serialization", () => {
   const h = new History(initial);

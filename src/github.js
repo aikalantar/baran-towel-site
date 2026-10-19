@@ -88,23 +88,25 @@ export class GitHubRepository {
   async publicationStatus(sha) {
     if (!/^[a-f0-9]{40}$/.test(sha)) throw new CMSFailure("شناسه انتشار معتبر نیست.");
     // A generic successful build check is not proof of a production deployment.
-    const result = { commit:"unknown", deployment:"unknown", evidence:null };
+    const result = { commit:"unknown", deployment:"unknown", stage:"unverified", evidence:null, checkedAt:new Date().toISOString() };
     try {
       const commit = await this.call(`git/commits/${sha}`);
       if (commit.sha !== sha) return result;
       result.commit = "committed";
-      if ((await this.head()) !== sha) return {...result,deployment:"superseded"};
+      result.stage = "commit_created";
+      if ((await this.head()) !== sha) return {...result,deployment:"superseded",reason:"newer_commit_exists"};
       const trusted = actor => actor?.type === "Bot" && ["cloudflare-workers-and-pages[bot]","cloudflare-pages[bot]"].includes(actor.login);
       const deployments = await this.call("deployments?per_page=100");
       const production = deployments.find(d => d.production_environment === true && trusted(d.creator));
-      if (!production || production.sha !== sha) return result;
+      if (!production || production.sha !== sha) return {...result,reason:"provider_evidence_unavailable"};
       const statuses = await this.call(`deployments/${production.id}/statuses?per_page=1`);
       const latest = statuses[0];
       if (!latest || !trusted(latest.creator)) return result;
       result.deployment = ["success","failure","error","inactive","queued","pending","in_progress"].includes(latest.state) ? latest.state : "unknown";
+      result.stage = result.deployment === "success" ? "deployment_verified" : ["queued","pending","in_progress"].includes(result.deployment) ? "deployment_started" : ["failure","error"].includes(result.deployment) ? "deployment_failed" : "commit_created";
       result.evidence = "github-cloudflare-production-deployment";
       if (/^https:\/\//.test(latest.log_url || "")) result.url = latest.log_url;
-    } catch { result.deployment = "unknown"; }
+    } catch { result.deployment = "unknown"; result.reason="provider_evidence_unavailable"; }
     return result;
   }
   async commit(base, changes, message) {
@@ -117,6 +119,10 @@ export class GitHubRepository {
     const tree = [];
     // Sequential writes stay within Workers' simultaneous connection limits.
     for (const change of changes) {
+      if (change.delete === true) {
+        tree.push({path:change.path,mode:"100644",type:"blob",sha:null});
+        continue;
+      }
       const blob = await this.call("git/blobs", "POST", {
         content: change.content,
         encoding: change.encoding || "utf-8",

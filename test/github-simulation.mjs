@@ -32,7 +32,7 @@ export async function githubSimulation() {
       const commit = state.commits.find(c => c.sha === body.sha);
       if (body.force !== false || state.race || commit.parents[0] !== state.head) throw new CMSFailure("تعارض هم‌زمان شبیه‌سازی‌شده",409);
       const tree = state.trees.get(commit.tree), next = new Map(state.files);
-      for (const entry of tree.tree) next.set(entry.path,state.blobs.get(entry.sha));
+      for (const entry of tree.tree) {if(entry.sha===null)next.delete(entry.path);else next.set(entry.path,state.blobs.get(entry.sha));}
       state.files = next; state.head = commit.sha; state.snapshots.set(state.head,new Map(next)); return {};
     }
     if (endpoint.startsWith("deployments?")) return [];
