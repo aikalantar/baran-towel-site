@@ -11,6 +11,7 @@ const server = await startLocal(process.cwd(), 0);
 const origin = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 const context = await browser.newContext({ viewport: { width: 1600, height: 1050 } });
+await context.addInitScript(()=>{if(window===window.top)localStorage.setItem('baran-builder-ui-mode','advanced');});
 const page = await context.newPage();
 page.setDefaultTimeout(30000);
 const errors = [], mutations = [];

@@ -23,7 +23,8 @@
     "test:builder:blocks": "node test/task6-blocks-browser.mjs",
     "test:builder:pages": "node test/task6-pages-browser.mjs",
     "test:performance:local": "node test/performance-local.mjs",
-    "test:builder:media": "node test/media-ratio-browser.mjs"
+    "test:builder:media": "node test/media-ratio-browser.mjs",
+    "test:builder:ux": "node test/customer-ux-browser.mjs"
   },
   "dependencies": {
     "linkedom": "^0.18.12"

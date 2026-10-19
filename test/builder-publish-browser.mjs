@@ -17,6 +17,7 @@ for (const args of [["init","-q"],["config","user.name","Builder Fixture"],["con
 const server = await startLocal(sandbox,0), origin = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch({channel:"chrome",headless:true});
 const context = await browser.newContext({viewport:{width:1600,height:1050}}), page = await context.newPage(), errors = [];
+await context.addInitScript(()=>{if(window===window.top)localStorage.setItem('baran-builder-ui-mode','advanced');});
 page.setDefaultTimeout(30000); page.on("pageerror",e => errors.push(e.message));
 const frame = () => page.frameLocator("#page");
 const saved = () => page.getByText("پیش‌نویس در این مرورگر ذخیره شد",{exact:true}).waitFor();

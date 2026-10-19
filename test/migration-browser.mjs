@@ -10,6 +10,7 @@ const folder=path.resolve('.cms-local/task6-qa');await fs.mkdir(folder,{recursiv
 const sandbox=await fs.mkdtemp(path.join(folder,'migration-'));await fs.cp('public',path.join(sandbox,'public'),{recursive:true});
 const original=await fs.readFile('public/index.html'),server=await startLocal(sandbox,0),origin=`http://127.0.0.1:${server.address().port}`;
 const browser=await chromium.launch({channel:'chrome',headless:true}),context=await browser.newContext({viewport:{width:1680,height:1050}}),page=await context.newPage();page.setDefaultTimeout(20000);
+await context.addInitScript(()=>{if(window===window.top)localStorage.setItem('baran-builder-ui-mode','advanced');});
 const results=[],errors=[],ok=name=>{results.push(name);console.log('PASS '+name);};page.on('pageerror',e=>errors.push(e.message));
 await context.addInitScript(()=>{
  const put=IDBObjectStore.prototype.put;
