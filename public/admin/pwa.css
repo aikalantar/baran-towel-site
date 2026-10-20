@@ -1,0 +1,9 @@
+.cms-install { font: inherit; font-size: 14px; min-height: 44px; padding: 10px 14px; border: 1px solid #d5dccf; border-radius: 9px; background: #edf1e9; color: #34452f; cursor: pointer; white-space: normal; }
+.cms-install:focus-visible, #cms-install-dialog button:focus-visible { outline: 3px solid #b69253; outline-offset: 3px; }
+.sidebar .cms-install { width: 100%; margin-top: 12px; }
+#cms-install-dialog { width: min(480px, calc(100vw - 32px)); max-height: 85vh; overflow: auto; box-sizing: border-box; border: 1px solid #e4e6de; border-radius: 16px; padding: 24px; font: 15px/2 Tahoma, Arial, sans-serif; color: #292e28; background: white; }
+#cms-install-dialog::backdrop { background: #29342580; }
+#cms-install-dialog h2 { font-size: 20px; }
+#cms-install-dialog button { min-height: 44px; padding: 8px 20px; border: 1px solid #d5dccf; border-radius: 8px; font: inherit; cursor: pointer; }
+#cms-install-dialog p { font-size: 15px; }
+[data-cms-install][hidden] { display: none !important; }

@@ -113,10 +113,15 @@ test("public block rendering works at 1440, 768, 390 and 320 with RTL/LTR and re
   try {
     const page = await browser.newPage();
     page.on("pageerror", error => errors.push(error.message));
-    await page.route("https://blocks.invalid/assets-v3/**", async route => {
-      const relative = new URL(route.request().url()).pathname;
-      if (!/^\/assets-v3\/gallery\/[a-z0-9-]+\.webp$/.test(relative)) return route.abort();
-      return route.fulfill({ contentType: "image/webp", body: await fs.readFile(`public${relative}`) });
+    // Every block's real image comes from public/. Never let the fictional
+    // hostname hit DNS/the network while testing local responsive rendering.
+    await page.route("**/*", async route => {
+      const url = new URL(route.request().url()), relative = url.pathname;
+      if (url.origin !== 'https://blocks.invalid' || !/^\/(?:assets-v3|assets)\/[a-zA-Z0-9_./-]+\.(?:webp|png|jpe?g|svg)$/.test(relative)) return route.abort();
+      const body = await fs.readFile(`public${relative}`).catch(()=>null);
+      if (!body) return route.abort();
+      const contentType = relative.endsWith('.svg') ? 'image/svg+xml' : relative.endsWith('.png') ? 'image/png' : /\.jpe?g$/.test(relative) ? 'image/jpeg' : 'image/webp';
+      return route.fulfill({ contentType, body });
     });
     const runtime = await fs.readFile("public/builder-blocks.js", "utf8");
     for (const language of ["fa", "en"]) {

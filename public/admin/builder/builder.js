@@ -1,5 +1,7 @@
 import { History, clone, emptyLayout, safeLink, safeImage, validModel, decodeDraft, encodeDraft, effectiveLayout, effectiveStyle, DEVICES } from "./model.js";
 import { isFree } from "./layout.js";
+import { builderLoginURL } from '../routes.js';
+import { mountInstall } from '../pwa.js';
 import { optimizeImage } from "./images.js";
 import { BLOCKS, createBlock } from './blocks.js';
 import {renderCanvas,updateGeometry} from './canvas.js';
@@ -506,6 +508,7 @@ window.addEventListener("pagehide", () => { if (history&&draftSafety.atRisk) sav
 document.addEventListener("visibilitychange", () => { if (document.hidden && history&&draftSafety.atRisk) save(); else if (!document.hidden&&history) checkSession(); });
 
 function lock(message) {
+  $('#builder-login').href = builderLoginURL(location.pathname + location.search);
   if(draftSafety.atRisk)draftRecovery.show('دسترسی متوقف شده است و تغییرات تازه هنوز ذخیره نشده‌اند؛ پیش از خروج JSON پیش‌نویس را دانلود کنید.',false);
   locked = true;
   $("#builder").hidden = true;
@@ -592,8 +595,10 @@ async function loadPage(path, ref = "", fresh = false, prepared = null) {
   launch();
 }
 async function boot() {
+  $('#builder-login').href = builderLoginURL(location.pathname + location.search);
+  mountInstall(document.querySelector('.toolbar .tools:last-child'));
   sessionInfo = await api("/session");
-  if (!sessionInfo.user || !["admin", "editor"].includes(sessionInfo.user.role)) { $("#gate-message").textContent = "برای ویرایش صفحه، با حساب مدیر یا ویرایشگر وارد پنل مدیریت شوید و سپس به این آدرس برگردید."; return; }
+  if (!sessionInfo.user || !["admin", "editor"].includes(sessionInfo.user.role)) { $("#gate-message").textContent = "برای ویرایش صفحه وارد حساب مدیر یا ویرایشگر شوید؛ پس از ورود به همین صفحه برمی‌گردید."; return; }
   user = sessionInfo.user.username;
   [library,db] = await Promise.all([api("/library"),openDB()]);
   for (const page of library.pages) { const option = document.createElement("option"); option.value = page.path; option.textContent = `${page.language.toUpperCase()} · ${page.route}`; $("#page-selector").append(option); }
