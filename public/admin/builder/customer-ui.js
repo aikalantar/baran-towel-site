@@ -4,9 +4,9 @@ import {lockedBy} from './locks.js';
 
 const preferenceKey='baran-builder-ui-mode';
 const simpleFields={
-  text:['fontSize','color','textAlign'],heading:['fontSize','color','textAlign'],
-  button:['fontSize','color','textAlign','backgroundColor','padding','borderRadius'],
-  image:['objectFit'],section:['backgroundColor','padding','margin','display','gridColumns','gap','flexDirection'],
+  text:['fontFamily','fontSize','color','textAlign'],heading:['fontFamily','fontSize','color','textAlign'],
+  button:['fontFamily','fontSize','color','textAlign','backgroundColor','padding','borderRadius'],
+  image:['objectFit','focalX','focalY'],section:['backgroundColor','padding','margin','display','gridColumns','gap','flexDirection'],
   container:['backgroundColor','padding','margin','display','gridColumns','gap','flexDirection'],
   divider:['backgroundColor','borderColor','borderWidth'],spacer:[],
 };
@@ -15,7 +15,7 @@ const fieldLabels={fontSize:'اندازه نوشته',color:'رنگ نوشته',
 
 export function installCustomerUI(ctx,professional){
   const $=s=>document.querySelector(s),aside=$('.inspector'),properties=$('#properties'),panel=$('#professional-controls');
-  let mode='simple',scheduled=0;
+  let mode='simple',scheduled=0,revealHandler;
   try{if(localStorage.getItem(preferenceKey)==='advanced')mode='advanced';}catch{}
   const section=document.createElement('section');section.id='selection-inspector';section.setAttribute('aria-label','تنظیمات انتخاب');
   section.innerHTML='<div class="selection-header"><div><span class="selection-eyebrow">انتخاب روی صفحه</span><h2 id="context-title">چه چیزی را ویرایش می‌کنید؟</h2></div><button id="selection-edit" type="button">ویرایش</button></div><p id="selection-help" class="muted">روی متن، تصویر یا یک بلوک کلیک کنید؛ تنظیمات همان مورد اینجا باز می‌شود.</p><button id="select-parent" type="button" hidden>انتخاب بخش والد</button><p id="selection-locked" class="muted" role="status" hidden>این عنصر یا بخش والد قفل است؛ برای مدیریت قفل، حالت پیشرفته را باز کنید.</p><div id="context-controls"></div>';
@@ -49,6 +49,7 @@ export function installCustomerUI(ctx,professional){
   }
   function revealSelection(focus=false){
     if(ctx.isReadOnly())return;
+    const handled=revealHandler?.(false);
     cancelAnimationFrame(scheduled);
     const key=ctx.getSelected().join('|');
     scheduled=requestAnimationFrame(()=>{
@@ -62,6 +63,7 @@ export function installCustomerUI(ctx,professional){
       if(entries().some(e=>kind(e)==='image'))$('#image-picker').open=true;
       const target=primary();
       for(let details=target?.closest('details');details;details=details.parentElement?.closest('details'))details.open=true;
+      if(handled){if(focus)revealHandler?.(true);return;}
       scrollToControl(section);
       if(target){const r=target.getBoundingClientRect(),a=aside.getBoundingClientRect();if(r.bottom>(matchMedia('(max-width: 900px)').matches?innerHeight:a.bottom)-12)scrollToControl(target);}
       if(focus&&target&&!target.disabled){target.focus({preventScroll:true});if(target===$('#text'))target.select();}
@@ -104,5 +106,5 @@ export function installCustomerUI(ctx,professional){
   $('#mode-simple').onclick=()=>setMode('simple');$('#mode-advanced').onclick=()=>setMode('advanced');
   $('#selection-edit').onclick=action.onclick=()=>revealSelection(true);
   ctx.onUpdate(refresh);refresh();
-  return {refresh,revealSelection,get mode(){return mode;}};
+  return {refresh,revealSelection,cancelReveal:()=>cancelAnimationFrame(scheduled),setRevealHandler:fn=>{revealHandler=fn;},get mode(){return mode;}};
 }
