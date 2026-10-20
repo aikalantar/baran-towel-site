@@ -1,4 +1,7 @@
 import {createDraftSafety,installDraftRecovery} from './draft-safety.js';
+import { mountNavigation, closeNavigation } from './navigation.js';
+import { mountInstall } from './pwa.js';
+import { adminDestination } from './routes.js';
 const $ = (selector, root = document) => root.querySelector(selector);
 const draftSafety=createDraftSafety();
 const draftRecovery=installDraftRecovery({retry:()=>saveDraft(),exportDraft:()=>exportDraft()});
@@ -186,6 +189,7 @@ function changed() {
 }
 const navItems = [
   ["home", "پیشخوان", "home"],
+  ["builder", "صفحه‌ساز بصری", "pages"],
   ["pages", "صفحات سایت", "pages"],
   ["catalog", "کاتالوگ مدل‌ها", "catalog"],
   ["blog", "مجله و مقاله‌ها", "blog"],
@@ -197,7 +201,9 @@ const navItems = [
 function shell(content) {
   const local = state.session.mode === "local";
   $("#app").innerHTML =
-    `<div class="layout"><aside class="sidebar"><a class="brand" href="#home"><img src="/assets/images/brand/baran-logo.c01f592bc1.png" alt="باران" width="52" height="52"><div><strong>مدیریت باران</strong><small>LUXTOWELCO</small></div></a><div class="nav-label">فضای مدیریت شما</div><nav class="nav" aria-label="منوی مدیریت">${navItems.map(([id, label, ico]) => `<button data-nav="${id}" class="${state.view === id ? "active" : ""}" ${state.view === id ? 'aria-current="page"' : ""}>${icon(ico)}${label}</button>`).join("")}</nav><div class="sidebar-bottom"><a class="site-link" href="/admin/builder/">صفحه‌ساز بصری</a><a class="site-link" href="${local ? "/" : state.session.site}" target="_blank" rel="noopener">مشاهده سایت ${icon("external")}</a><div class="user"><div class="avatar">${esc(state.session.user.name.slice(0, 1))}</div><div><strong>${esc(state.session.user.name)}</strong><small>${local ? "نسخه محلی" : state.session.user.role === "admin" ? "مدیر سایت" : "ویرایشگر محتوا"}</small></div>${!local ? `<button class="logout" data-action="logout" aria-label="خروج">${icon("logout")}</button>` : ""}</div></div></aside><main id="content" class="main"><header class="topbar"><span>باران <span aria-hidden="true">/</span> ${navItems.find(([id]) => id === state.view)?.[1] || "ویرایش محتوا"}</span><span class="connection"><span class="dot"></span>${local ? "حالت محلی • ذخیره در پوشه پروژه" : "فضای خصوصی مدیریت"}</span></header>${content}</main></div>`;
+    `<div class="layout"><header class="cms-mobile-bar"><a href="/admin/">مدیریت باران</a><button id="cms-menu-toggle" type="button" aria-controls="cms-sidebar" aria-expanded="false">☰ منوی مدیریت</button></header><div class="cms-menu-backdrop" data-menu-close></div><aside class="sidebar" id="cms-sidebar" aria-label="منوی مدیریت"><button class="cms-menu-close" type="button" data-menu-close>بستن منو ×</button><a class="brand" href="/admin/"><img src="/assets/images/brand/baran-logo.c01f592bc1.png" alt="باران" width="52" height="52"><div><strong>مدیریت باران</strong><small>LUXTOWELCO</small></div></a><div class="sidebar-scroll"><div class="nav-label">فضای مدیریت شما</div><nav class="nav" aria-label="منوی مدیریت">${navItems.map(([id, label, ico]) => id === 'builder' ? `<a href="/admin/builder/">${icon(ico)}${label}</a>` : `<button data-nav="${id}" class="${state.view === id ? "active" : ""}" ${state.view === id ? 'aria-current="page"' : ""}>${icon(ico)}${label}</button>`).join("")}</nav><div class="sidebar-bottom"><a class="site-link" href="${local ? "/" : state.session.site}" target="_blank" rel="noopener">مشاهده سایت ${icon("external")}</a><div class="user"><div class="avatar">${esc(state.session.user.name.slice(0, 1))}</div><div><strong>${esc(state.session.user.name)}</strong><small>${local ? "نسخه محلی" : state.session.user.role === "admin" ? "مدیر سایت" : "ویرایشگر محتوا"}</small></div>${!local ? `<button class="logout" data-action="logout" aria-label="خروج">${icon("logout")}</button>` : ""}</div></div></div></aside><main id="content" class="main"><header class="topbar"><span>باران <span aria-hidden="true">/</span> ${navItems.find(([id]) => id === state.view)?.[1] || "ویرایش محتوا"}</span><span class="connection"><span class="dot"></span>${local ? "حالت محلی • ذخیره در پوشه پروژه" : "فضای خصوصی مدیریت"}</span></header>${content}</main></div>`;
+  mountNavigation();
+  mountInstall($('.sidebar-bottom'));
 }
 const heading = (title, subtitle, actions = "") =>
   `<div class="page-heading"><div><h1>${esc(title)}</h1><p>${esc(subtitle)}</p></div><div class="actions">${actions}</div></div>`;
@@ -215,7 +221,7 @@ function renderHome() {
     heading(
       "اینجا، باران را به‌روز نگه دارید.",
       "متن‌ها، تصاویر و مدل‌ها؛ همه در یک فضای ساده و مرتب.",
-      `<a class="btn" href="/" target="_blank" rel="noopener">${icon("external")}مشاهده سایت</a>`,
+      `<a class="btn primary dashboard-builder" href="/admin/builder/">${icon("pages")}باز کردن صفحه‌ساز بصری</a><a class="btn" href="/" target="_blank" rel="noopener">${icon("external")}مشاهده سایت</a>`,
     ) +
       `<div class="welcome"><div class="welcome-copy"><span class="eyebrow">هر تغییر کوچک، یک روایت تازه</span><h2>محتوای تازه،<br>با همان حس آشنای باران.</h2><p>صفحه موردنظر را انتخاب کنید، تغییر دهید و پیش از انتشار نتیجه را ببینید.</p><button class="btn primary" data-nav="pages">شروع ویرایش ${icon("arrow")}</button></div><img src="/assets/images/home/editorial-01.webp" width="640" height="640" alt="تن‌پوش باران با جزئیات ظریف"></div><div class="stats"><div class="stat"><div><strong>${number(pages.length)}</strong><span>صفحه قابل ویرایش</span></div><div class="stat-icon">${icon("pages")}</div></div><div class="stat"><div><strong>${number(state.library.images.length)}</strong><span>تصویر در کتابخانه</span></div><div class="stat-icon">${icon("image")}</div></div><div class="stat"><div><strong>۲</strong><span>زبان فارسی و انگلیسی</span></div><div class="stat-icon">${icon("blog")}</div></div></div><div class="section-heading"><h2>از کجا شروع می‌کنید؟</h2><button class="btn text small" data-nav="pages">همه صفحات ${icon("arrow")}</button></div>${pageCards(pages.filter((p) => ["/", "/catalog/", "/bridal-towels/"].includes(p.route)))}<div class="help-strip">${icon("help")}<p><strong>با خیال راحت ویرایش کنید.</strong>پیش‌نویس در همین مرورگر ذخیره می‌شود. تغییرات فقط با انتخاب «${state.session.mode === "local" ? "ذخیره در پروژه" : "انتشار تغییرات"}» ثبت می‌شوند.</p></div>`,
   );
@@ -706,6 +712,7 @@ function renderHelp() {
   );
 }
 function renderLogin() {
+  closeNavigation(false);
   const configured = state.session.configured;
   $("#app").innerHTML =
     `<main id="content" class="login-page"><section class="login-form"><div class="brand"><img src="/assets/images/brand/baran-logo.c01f592bc1.png" alt="باران" width="52" height="52"><div><strong>مدیریت باران</strong><small>LUXTOWELCO</small></div></div><h1>به فضای مدیریت خوش آمدید.</h1><p>برای ویرایش محتوا و تصاویر سایت وارد شوید.</p>${!configured ? '<div class="banner">ورود پنل هنوز فعال نشده است. مسئول فنی باید حساب‌های مدیر و دسترسی امن انتشار را روی سرور تنظیم کند.</div>' : ""}<form id="login-form"><div class="form-group"><label for="username">نام کاربری</label><input id="username" name="username" dir="ltr" autocomplete="username" maxlength="50" required></div><div class="form-group"><label for="password">رمز عبور</label><input id="password" name="password" type="password" dir="ltr" autocomplete="current-password" maxlength="200" required></div><p id="login-error" role="alert" class="subtle"></p><button class="btn primary" type="submit" ${!configured ? "disabled" : ""}>ورود به پنل ${icon("arrow")}</button></form><p class="login-note">این فضا خصوصی است. برای دریافت یا تغییر رمز با مدیر سایت تماس بگیرید.</p><a class="btn text" href="/">بازگشت به سایت</a></section><aside class="login-art"><img src="/assets/images/home/baran-hero.webp" width="896" height="1194" alt="تن‌پوش سبز باران"><div class="login-art-copy"><h2>روایت باران، در دست شما.</h2><p>هر تصویر تازه و هر کلمه، بخشی از تجربه‌ای است که می‌سازید.</p></div></aside></main>`;
@@ -898,7 +905,13 @@ document.addEventListener("click", async (event) => {
   const button = event.target.closest("button");
   if (!button || button.disabled) return;
   try {
-    if (button.dataset.nav) return await navigate(button.dataset.nav);
+    if (button.dataset.nav) {
+      await navigate(button.dataset.nav);
+      const title = $('#content h1');
+      title?.setAttribute('tabindex', '-1');
+      title?.focus({preventScroll:true});
+      return;
+    }
     if (button.dataset.open) return await openPage(button.dataset.open);
     if (button.dataset.language) {
       state.language = button.dataset.language;
@@ -1022,6 +1035,9 @@ document.addEventListener("submit", async (event) => {
         password: form.get("password"),
       });
       event.target.reset();
+      const next = adminDestination(new URL(location.href).searchParams.get('next'));
+      if (next !== '/admin/') { location.replace(next); return; }
+      history.replaceState(null, '', '/admin/');
       await boot();
     } catch (error) {
       $("#login-error").textContent = error.message;
@@ -1079,6 +1095,9 @@ async function boot() {
       renderLogin();
       return;
     }
+    const next = adminDestination(new URL(location.href).searchParams.get('next'));
+    if (next !== '/admin/') { location.replace(next); return; }
+    if (new URL(location.href).searchParams.has('next')) history.replaceState(null, '', '/admin/');
     state.library = await api("/library");
     renderHome();
   } catch (error) {

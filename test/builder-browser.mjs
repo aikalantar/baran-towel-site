@@ -166,7 +166,8 @@ try {
   const denied = await context.newPage();
   await denied.route("**/api/cms/session", route => route.fulfill({ json: { user: null, configured: true } }));
   await denied.goto(origin + "/admin/builder/");
-  await denied.getByText(/برای ویرایش صفحه، با حساب/).waitFor();
+  await denied.locator('#gate-message').filter({hasText:'پس از ورود به همین صفحه برمی‌گردید'}).waitFor();
+  assert.equal(new URL(await denied.locator('#builder-login').getAttribute('href'),origin).searchParams.get('next'),'/admin/builder/');
   assert.equal(await denied.locator("#builder").isVisible(), false);
   assert.equal(await denied.locator("#page").getAttribute("srcdoc"), null); await denied.close(); count++;
   await page.route("**/api/cms/session", route => route.fulfill({ json: { user: null, configured: true } }));

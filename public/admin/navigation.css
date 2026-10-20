@@ -1,0 +1,25 @@
+/* One navigation tree at every size: drawer links never disappear on mobile. */
+.sidebar { padding: 20px 16px; height: 100vh; height: 100dvh; overflow: hidden; }
+.sidebar > .brand { flex-shrink: 0; padding-bottom: 18px; }
+.sidebar-scroll { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 4px; }
+.sidebar .nav { display: grid; gap: 5px; overflow: visible; }
+.sidebar .nav button, .sidebar .nav a { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 10px 12px; border-radius: 10px; font-size: 15px; text-align: start; white-space: normal; color: var(--olive); }
+.sidebar .nav a:hover, .sidebar .nav a:focus-visible { background: var(--olive-light); }
+.sidebar .sidebar-bottom { display: block; margin-top: 20px; padding: 12px 4px 0; }
+.sidebar .site-link, .sidebar .user strong, .sidebar .user small { font-size: 14px; }
+.sidebar .logout { min-width: 44px; min-height: 44px; }
+.cms-mobile-bar, .cms-menu-close, .cms-menu-backdrop { display: none; }
+.dashboard-builder { font-size: 15px; min-height: 46px; white-space: normal; }
+@media (max-width: 760px) {
+  .cms-mobile-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; padding-top: max(10px, env(safe-area-inset-top)); background: white; border-bottom: 1px solid var(--line); }
+  .cms-mobile-bar button, .cms-menu-close { min-width: 44px; min-height: 44px; padding: 8px 14px; background: var(--olive-light); color: var(--olive); border-radius: 8px; font-size: 15px; }
+  .cms-mobile-bar a { font-size: 15px; font-weight: bold; }
+  .sidebar { position: fixed; inset-block: 0; inset-inline-start: 0; width: min(340px, calc(100vw - 28px)); height: 100vh; height: 100dvh; padding: 16px; padding-top: max(16px, env(safe-area-inset-top)); padding-bottom: max(16px, env(safe-area-inset-bottom)); z-index: 51; border-inline-end: 1px solid var(--line); visibility: hidden; }
+  .cms-menu-open .sidebar { visibility: visible; }
+  .cms-menu-close { display: block; margin-inline-start: auto; margin-bottom: 12px; flex-shrink: 0; }
+  .cms-menu-open { overflow: hidden; }
+  .cms-menu-open .cms-menu-backdrop { display: block; position: fixed; inset: 0; z-index: 50; background: #29342580; }
+  .sidebar .nav-label { display: block; font-size: 14px; }
+  .sidebar .nav .icon { width: 20px; height: 20px; }
+  .sidebar .brand strong { font-size: 16px; }
+}

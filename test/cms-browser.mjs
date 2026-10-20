@@ -180,6 +180,7 @@ try {
   );
   count++;
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('#cms-menu-toggle').click();
   await page.locator('[data-nav="home"]').click();
   await page
     .getByRole("heading", { name: "اینجا، باران را به‌روز نگه دارید." })

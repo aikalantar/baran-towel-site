@@ -1,0 +1,29 @@
+{
+  "task": 12,
+  "branch": "codex/task12-cms-navigation-pwa",
+  "baseline": "5c802e05bd9c906dc084e0edb4cb971699da2ef4",
+  "scope": "CMS navigation, safe authentication return and online installable CMS PWA",
+  "worker": "baran-towel-site",
+  "workerEntry": "src/cms-worker.js",
+  "staticAssets": "public",
+  "workerSourceChanged": false,
+  "infrastructureChangesRequired": false,
+  "routes": ["/admin/", "/admin/builder/"],
+  "manifest": "public/admin/cms.webmanifest",
+  "newRuntimeAssets": [
+    "public/admin/navigation.js",
+    "public/admin/navigation.css",
+    "public/admin/routes.js",
+    "public/admin/pwa.js",
+    "public/admin/pwa.css",
+    "public/admin/cms.webmanifest"
+  ],
+  "serviceWorker": null,
+  "offlineEditing": false,
+  "privateResponseCaching": false,
+  "qaReport": "TASK12-QA-FA.md",
+  "rollbackGuide": "TASK12-RELEASE-FA.md",
+  "releaseAuthorizationRequired": true,
+  "productionDeployPerformed": false,
+  "deviceAcceptancePending": ["Physical Android Chrome WebAPK installation", "Physical iPhone Safari Add to Home Screen and session behavior"]
+}
