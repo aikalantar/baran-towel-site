@@ -11,6 +11,9 @@ import {installCustomerUI} from './customer-ui.js';
 import {lockedBy,allowsLockedChanges,requiredUnlocks} from './locks.js';
 import {createDraftSafety,installDraftRecovery} from '../draft-safety.js';
 import {publicationMessage} from './publication-status.js';
+import {installCanvasInput} from './canvas-input.js';
+import {installDirectEdit} from './direct-edit.js';
+import {installFontPreview} from './fonts.js';
 
 const $ = selector => document.querySelector(selector);
 const frame = $("#page");
@@ -19,7 +22,7 @@ const draftRecovery=installDraftRecovery({retry:()=>save(),exportDraft:()=>downl
 let base, history, library, db, storageKey, user, doc, selected = [], device = "desktop", preview = false;
 let gesture = null, saveTimer, noticeTimer, locked = false, draftWritable = false, saveChain = Promise.resolve(), originals = new Map();
 let sessionInfo, currentPath = "public/index.html", activeRef = "", sessionTimer, publishing = false, publishRequest = null, publication = null;
-let customerUI, selectionPending = false,publicationTimer;
+let editView=0,frameLoadListener,frameObserver,canvasInput, pendingTouch, customerUI, selectionPending = false,publicationTimer;
 const updateHooks=[];
 const notifyControls=()=>{if(history&&doc)for(const fn of updateHooks)fn();};
 const model = () => history.present;
@@ -158,12 +161,20 @@ function drawSelection() {
     node.setAttribute("data-builder-editing", "true");
     if (selected.length !== 1||element(id)?.locked||model().sections.some(s=>s.id===id)) continue;
     const rect = node.getBoundingClientRect();
-    for (const corner of ["nw", "ne", "sw", "se"]) {
+    if(rect.bottom<=0||rect.top>=doc.defaultView.innerHeight||rect.right<=0||rect.left>=doc.defaultView.innerWidth)continue;
+    const touch=matchMedia("(pointer:coarse)").matches;
+    if(!gesture){
+      const move=doc.createElement('button');move.dataset.builderOverlay='move';move.dataset.move='true';
+      move.setAttribute('aria-label','دستگیره جابه‌جایی');move.textContent='✥';
+      move.style.cssText=`position:fixed;left:${Math.max(0,rect.left)}px;top:${Math.max(0,rect.top-48)}px;width:44px;height:44px;z-index:2147483647;border:2px solid #237658;border-radius:8px;background:white;color:#237658;font-size:24px;touch-action:none`;
+      doc.body.append(move);
+    }
+    for (const corner of (touch?["se"]:["nw", "ne", "sw", "se"])) {
       const handle = (gesture && doc.querySelector(`[data-resize="${corner}"]`)) || doc.createElement("button");
       handle.dataset.builderOverlay = "handle";
       handle.dataset.resize = corner;
       handle.setAttribute("aria-label", `تغییر اندازه ${corner}`);
-      handle.style.cssText = `position:fixed;left:${(corner.includes("w") ? rect.left : rect.right) - 6}px;top:${(corner.includes("n") ? rect.top : rect.bottom) - 6}px;width:13px;height:13px;padding:0;background:white;border:2px solid #2563eb;border-radius:2px;z-index:2147483647;cursor:${corner}-resize;touch-action:none;direction:ltr;`;
+      handle.style.cssText = `position:fixed;left:${(corner.includes("w") ? rect.left : rect.right) - (touch?22:6)}px;top:${(corner.includes("n") ? rect.top : rect.bottom) - (touch?22:6)}px;width:${touch?44:13}px;height:${touch?44:13}px;padding:0;background:white;border:2px solid #2563eb;border-radius:2px;z-index:2147483647;cursor:${corner}-resize;touch-action:none;direction:ltr;`;
       if (!handle.isConnected) doc.body.append(handle);
     }
   }
@@ -227,9 +238,12 @@ function properties() {
 function startGesture(event) {
   if (preview || locked || publishing || event.button !== 0) return;
   const resize = event.target.closest("[data-resize]")?.dataset.resize;
-  const hit = event.target.closest("[data-builder-id]") || doc.elementsFromPoint(event.clientX, event.clientY).map(n => n.closest("[data-builder-id]")).find(Boolean) || event.target.closest('[data-builder-anchor]');
+  const hit = event.target.closest("[data-move]")?nodeFor(selected[0]):event.target.closest("[data-builder-id]") || doc.elementsFromPoint(event.clientX, event.clientY).map(n => n.closest("[data-builder-id]")).find(Boolean) || event.target.closest('[data-builder-anchor]');
   selectionPending = !resize;
   if (!resize && !hit) { selectionPending=false;selected = []; drawSelection(); properties(); layers(); notifyControls(); return; }
+  if(event.pointerType==='touch'&&!resize&&!event.target.closest('[data-move]')){
+    pendingTouch={id:hit.dataset.builderId||hit.dataset.builderAnchor,x:event.clientX,y:event.clientY,pointerId:event.pointerId};selectionPending=false;return;
+  }
   event.preventDefault();
   if (!resize) {
     let hitId=hit.dataset.builderId||hit.dataset.builderAnchor;
@@ -246,9 +260,10 @@ function startGesture(event) {
     return { id, rect, anchor, layout: layoutFor(e) };
   });
   gesture = { before: clone(model()), x: event.clientX, y: event.clientY, scrollY:doc.defaultView.scrollY, resize, items, moved: false, target: event.target, pointerId: event.pointerId };
-  event.target.setPointerCapture?.(event.pointerId);
+  (event.captureTarget||event.target).setPointerCapture?.(event.pointerId);
 }
 function moveGesture(event) {
+  if(pendingTouch&&Math.hypot(event.clientX-pendingTouch.x,event.clientY-pendingTouch.y)>9)pendingTouch=null;
   if (!gesture || event.pointerId !== gesture.pointerId) return;
   const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y + doc.defaultView.scrollY - gesture.scrollY;
   if (!gesture.moved && Math.hypot(dx, dy) < 3) return;
@@ -287,6 +302,7 @@ function moveGesture(event) {
   render(next);
 }
 function endGesture(event) {
+  if(pendingTouch&&(!event||event.pointerId===pendingTouch.pointerId)){const id=pendingTouch.id;pendingTouch=null;select(id);return;}
   if(!gesture){if(selectionPending){selectionPending=false;customerUI?.revealSelection();}return;}
   if(event && event.pointerId !== gesture.pointerId)return;
   const next = gesture.next;
@@ -363,7 +379,7 @@ function bindFrame() {
   doc = frame.contentDocument;
   frame.hidden=false;$('.workspace').inert=false;
   rememberOriginals();
-  doc.addEventListener("click", event => { if(!preview||event.target.closest('a,button'))event.preventDefault(); event.stopPropagation(); }, true);
+  doc.addEventListener("click", event => { if(!preview){event.preventDefault();event.stopPropagation();} }, true);
   doc.addEventListener("submit", event => event.preventDefault(), true);
   doc.addEventListener("dragstart", event => event.preventDefault());
   doc.addEventListener('dragover',event=>{if([...event.dataTransfer.types].includes('text/x-baran-block')){event.preventDefault();event.dataTransfer.dropEffect='copy';}});
@@ -378,7 +394,7 @@ function bindFrame() {
   });
   doc.addEventListener("keydown", keyboard);
   doc.addEventListener("scroll", drawSelection, true);
-  new frame.contentWindow.ResizeObserver(() => { drawSelection(); }).observe(doc.body);
+  frameObserver?.disconnect();frameObserver=new ResizeObserver(()=>drawSelection());frameObserver.observe(doc.body);
   frame.contentWindow.addEventListener("resize", () => { render(); properties(); });
   doc.addEventListener("load", drawSelection, true);
   render(); properties(); updateHistory();
@@ -445,17 +461,19 @@ $("#layers").onclick = event => {
   const id = event.target.closest("[data-select]")?.dataset.select;
   if (id) { select(id, event.shiftKey); nodeFor(id).scrollIntoView({ block: "center" }); drawSelection(); }
 };
-document.querySelectorAll("[data-device]").forEach(button => button.onclick = () => {
-  cancelGesture(); device = button.dataset.device;
-  document.querySelectorAll("[data-device]").forEach(b => b.setAttribute("aria-pressed", b === button));
-  $("#frame-wrap").style.width = `${({desktop:1440,tablet:768,mobile:390})[device]}px`;
-  $("#device-label").textContent = ({desktop:'دسکتاپ · ۱۴۴۰ × ۸۰۰',tablet:'تبلت · ۷۶۸ × ۸۰۰',mobile:'موبایل · ۳۹۰ × ۸۰۰'})[device];
-  requestAnimationFrame(() => { render(); properties(); });
-});
+function setDevice(value,width){
+  cancelGesture();device=value;
+  document.querySelectorAll('[data-device]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.device===device)));
+  $('#frame-wrap').style.width=`${width||({desktop:1440,tablet:768,mobile:390})[device]}px`;
+  $('#device-label').textContent=({desktop:'دسکتاپ',tablet:'تبلت',mobile:'موبایل'})[device];
+  requestAnimationFrame(()=>{if(history&&doc&&!preview){render();properties();}});
+}
+document.querySelectorAll('[data-device]').forEach(button=>button.onclick=()=>setDevice(button.dataset.device));
 $("#preview").onclick = () => {
   if (publication?.result) return notice("برای ویرایش بعدی، نسخه ثبت‌شده را با دکمه شروع ویرایش باز کنید؛ پیش‌نویس قبلی محفوظ است.");
   cancelGesture(); preview = !preview;
   document.body.classList.toggle("preview", preview);
+  if(!preview&&frame.contentDocument!==doc)loadEditingFrame();
   doc.documentElement.toggleAttribute("data-builder-preview", preview);
   $("#preview").setAttribute("aria-pressed", preview);
   $("#preview").textContent = preview ? "بازگشت به ویرایش" : "پیش‌نمایش";
@@ -523,10 +541,19 @@ async function checkSession() {
     if (current.user?.username !== user || !["admin", "editor"].includes(current.user?.role)) lock("نشست شما پایان یافته است؛ دوباره از پنل مدیریت وارد شوید. پیش‌نویس ذخیره‌شده حفظ شده است.");
   } catch { lock("بررسی دسترسی ممکن نشد؛ اتصال را بررسی کرده و صفحه را تازه کنید."); }
 }
+function loadEditingFrame(){
+  const view=String(++editView);
+  if(frameLoadListener)frame.removeEventListener('load',frameLoadListener);
+  frame.hidden=true;$('.workspace').inert=true;
+  // Navigation may still emit a late load for the previous preview URL. Bind
+  // only our uniquely marked document, never that unrelated customer page.
+  frameLoadListener=()=>{if(frame.contentDocument?.querySelector('meta[name="builder-editor-view"]')?.content!==view)return;frame.removeEventListener('load',frameLoadListener);frameLoadListener=null;bindFrame();};
+  frame.addEventListener('load',frameLoadListener);
+  frame.srcdoc=base.html.replace('</head>',`<meta name="builder-editor-view" content="${view}"></head>`);
+}
 function launch() {
   $("#gate").hidden = true; $("#builder").hidden = false;
-  frame.addEventListener("load", bindFrame, { once: true });
-  frame.srcdoc = base.html;
+  loadEditingFrame();
   clearInterval(sessionTimer); sessionTimer = setInterval(checkSession, 45_000);
 }
 async function loadPage(path, ref = "", fresh = false, prepared = null) {
@@ -717,9 +744,13 @@ for(const key of ['bold','italic','underline'])$('#rich-'+key).onclick=()=>{cons
 $('#public-preview').onclick=async()=>{if(!history||publishing)return;try{$('#public-preview').disabled=true;const result=await api('/builder/preview',{model:clone(model()),unlockIds:requiredUnlocks(base.model,model()).sort()});$('#output-frame').srcdoc=result.html;$('#output-dialog').showModal();}catch(error){notice(error.message);}finally{$('#public-preview').disabled=false;}};
 $('#output-close').onclick=()=>{$('#output-dialog').close();$('#output-frame').srcdoc='';};
 $('#guides').onchange=()=>drawSelection();
-const context={api,getModel:()=>history?.present,getSelected:()=>selected,getNode:nodeFor,getElement:element,getDocument:()=>doc,isReadOnly:()=>preview||locked||publishing||!draftWritable,getDevice:()=>device,getBase:()=>base,getPath:()=>currentPath,getSession:()=>sessionInfo,getUser:()=>user,mutate,select,notice,onUpdate:fn=>updateHooks.push(fn),dbRecord,save,loadPage,refreshLibrary,openPrepared:async prepared=>{const path=prepared.model.base.path;await dbRecord(`prepared:${user}:${path}`,prepared);await loadPage(path,'',true,prepared);await save();}};
+const context={api,insertBlock,setDevice,refreshInput:()=>canvasInput?.refresh(),isPreview:()=>preview,startGesture,moveGesture,endGesture,cancelGesture,drawSelection,keyboard,revealSelection:focus=>customerUI?.revealSelection(focus),selectAt:event=>{const hit=event.target.closest('[data-builder-id]')||event.target.closest('[data-builder-anchor]');if(hit)select(hit.dataset.builderId||hit.dataset.builderAnchor);},getModel:()=>history?.present,getSelected:()=>selected,getNode:nodeFor,getElement:element,getDocument:()=>doc,isReadOnly:()=>preview||locked||publishing||!draftWritable,getDevice:()=>device,getBase:()=>base,getPath:()=>currentPath,getSession:()=>sessionInfo,getUser:()=>user,mutate,select,notice,onUpdate:fn=>updateHooks.push(fn),dbRecord,save,loadPage,refreshLibrary,openPrepared:async prepared=>{const path=prepared.model.base.path;await dbRecord(`prepared:${user}:${path}`,prepared);await loadPage(path,'',true,prepared);await save();}};
 const professional=installProfessionalControls(context);
 $('#properties').after($('#professional-controls'));
 installPagesUI(context);
 customerUI=installCustomerUI(context,professional);
+canvasInput=installCanvasInput(context);
+installDirectEdit(context,customerUI);
+installFontPreview(context);
+if(innerWidth<=640)setDevice('mobile',Math.max(280,innerWidth-24));
 boot().catch(error => { $("#gate-message").textContent = error.message; });

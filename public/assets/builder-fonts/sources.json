@@ -1,0 +1,85 @@
+{
+  "description": "Unmodified self-hosted OFL font binaries; selected families load on demand only.",
+  "files": [
+    {
+      "family": "Vazirmatn",
+      "file": "vazirmatn-variable.woff2",
+      "weight": "100 900",
+      "source": "https://raw.githubusercontent.com/rastikerdar/vazirmatn/6e553e33489a8f9dfaccc76860a2e3f3c1e66de7/fonts/webfonts/Vazirmatn[wght].woff2",
+      "revision": "6e553e33489a8f9dfaccc76860a2e3f3c1e66de7",
+      "bytes": 111152,
+      "sha256": "4e3fa217d38fdafc1fea4414ceb58ca5e662cf0ab5fa735a8c8c20e8b42cad92",
+      "license": "Vazirmatn-LICENSE.txt"
+    },
+    {
+      "family": "Estedad",
+      "file": "estedad-variable.woff2",
+      "weight": "100 900",
+      "source": "https://raw.githubusercontent.com/aminabedi68/Estedad/0dbe689787b8c2ea302373cb601d0f352f9f98e5/fonts/webfonts/Estedad[wght].woff2",
+      "revision": "0dbe689787b8c2ea302373cb601d0f352f9f98e5",
+      "bytes": 128304,
+      "sha256": "18a2278ad5c9c2f60e034270ea2d5856d04c4e984e47c65483aa63b41e3c5a1e",
+      "license": "Estedad-LICENSE.txt"
+    },
+    {
+      "family": "Shabnam",
+      "file": "shabnam-regular.woff2",
+      "weight": "400",
+      "source": "https://raw.githubusercontent.com/rastikerdar/shabnam-font/5283d80e0118d9d4439b1208e9b912588e563d06/dist/Shabnam.woff2",
+      "revision": "5283d80e0118d9d4439b1208e9b912588e563d06",
+      "bytes": 35752,
+      "sha256": "540d3f4e172bd6b5c70dd06bce57e055ce59270e95ea642b414fe0709faaa085",
+      "license": "Shabnam-LICENSE.txt"
+    },
+    {
+      "family": "Shabnam",
+      "file": "shabnam-bold.woff2",
+      "weight": "700",
+      "source": "https://raw.githubusercontent.com/rastikerdar/shabnam-font/5283d80e0118d9d4439b1208e9b912588e563d06/dist/Shabnam-Bold.woff2",
+      "revision": "5283d80e0118d9d4439b1208e9b912588e563d06",
+      "bytes": 37644,
+      "sha256": "1ff187f5320ec4527ebb6a71831b88289a6cb18ca33ac34476b96960f0af7282",
+      "license": "Shabnam-LICENSE.txt"
+    },
+    {
+      "family": "Sahel",
+      "file": "sahel-variable.woff2",
+      "weight": "400 900",
+      "source": "https://raw.githubusercontent.com/rastikerdar/sahel-font/81ea305068b028ce311807c574fef50f3d4e2c54/dist/Sahel-VF.woff2",
+      "revision": "81ea305068b028ce311807c574fef50f3d4e2c54",
+      "bytes": 38412,
+      "sha256": "f922c35e2e6198c31edd662dbb051dac4238865293dedfb491016b5120eceb90",
+      "license": "Sahel-LICENSE.txt"
+    },
+    {
+      "family": "Inter",
+      "file": "inter-variable.woff2",
+      "weight": "100 900",
+      "source": "https://raw.githubusercontent.com/rsms/inter/353b61b9f4430d5f420d56605a6e7993e0941470/docs/font-files/InterVariable.woff2",
+      "revision": "353b61b9f4430d5f420d56605a6e7993e0941470",
+      "bytes": 352240,
+      "sha256": "693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3",
+      "license": "Inter-LICENSE.txt"
+    },
+    {
+      "family": "Lato",
+      "file": "lato-400.woff2",
+      "weight": "400",
+      "source": "https://fonts.gstatic.com/s/lato/v25/S6uyw4BMUTPHjx4wXg.woff2",
+      "cssSource": "https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap",
+      "bytes": 23580,
+      "sha256": "918b7dc3e2e2d015c16ce08b57bcb64d2253bafc1707658f361e72865498e537",
+      "license": "Lato-LICENSE.txt"
+    },
+    {
+      "family": "Lato",
+      "file": "lato-700.woff2",
+      "weight": "700",
+      "source": "https://fonts.gstatic.com/s/lato/v25/S6u9w4BMUTPHh6UVSwiPGQ.woff2",
+      "cssSource": "https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap",
+      "bytes": 23040,
+      "sha256": "c447dd7677b419db7b21dbdfc6277c7816a913ffda76fd2e52702df538de0e49",
+      "license": "Lato-LICENSE.txt"
+    }
+  ]
+}

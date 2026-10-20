@@ -1,5 +1,6 @@
 import {effectiveLayout,effectiveStyle,validStyle} from './model.js';
 import {BLOCK_CSS} from './blocks.js';
+import {fontStack,fontFacesCSS} from './fonts.js';
 export const isFree=e=>e.free===true||(e.layoutMode?e.layoutMode==='free'&&!e.source:!e.source);
 export const CREATED_CSS=BLOCK_CSS;
 const px=new Set(['fontSize','letterSpacing','padding','paddingTop','paddingRight','paddingBottom','paddingLeft','margin','marginTop','marginRight','marginBottom','marginLeft','borderWidth','borderRadius','minWidth','maxWidth','minHeight','maxHeight','gap']);
@@ -10,7 +11,8 @@ export function styleDeclarations(style){
  for(const [key,value]of Object.entries(style)){
   if(['focalX','focalY'].includes(key))continue;
   const property=key.replace(/[A-Z]/g,c=>'-'+c.toLowerCase());
-  if(key==='aspectRatio')rules.push(`aspect-ratio:${value||'auto'}`);
+  if(key==='fontFamily')rules.push(`font-family:${fontStack(value)}`);
+  else if(key==='aspectRatio')rules.push(`aspect-ratio:${value||'auto'}`);
   else if(key==='boxShadow')rules.push(`box-shadow:${shadows[value]}`);
   else if(key==='gridColumns')rules.push(`grid-template-columns:repeat(${value},minmax(0,1fr))`);
   else if(key==='backgroundImage')rules.push(`background-image:url("${value}");background-size:cover;background-position:center`);
@@ -39,5 +41,5 @@ export function layoutCSS(elements){
    if(e.type==='image'&&isFree(e))outputs[device].push(`[data-builder-unit="${e.id}"]>img{width:100%!important;height:100%!important;object-fit:${effectiveStyle(e,device).objectFit||'cover'}}`);
   }
  }
- return BLOCK_CSS+shared.join('')+`@media(min-width:1024px){${outputs.desktop.join('')}}@media(min-width:641px) and (max-width:1023px){${outputs.tablet.join('')}}@media(max-width:640px){${outputs.mobile.join('')}}`;
+ return fontFacesCSS(elements)+BLOCK_CSS+shared.join('')+`@media(min-width:1024px){${outputs.desktop.join('')}}@media(min-width:641px) and (max-width:1023px){${outputs.tablet.join('')}}@media(max-width:640px){${outputs.mobile.join('')}}`;
 }

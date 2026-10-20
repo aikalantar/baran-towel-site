@@ -1,3 +1,4 @@
+import {FONT_IDS} from './fonts.js';
 export const SCHEMA_VERSION = 2;
 export const HISTORY_LIMIT = 120;
 export const DEVICES = ["desktop", "tablet", "mobile"];
@@ -9,7 +10,7 @@ export function stablePageID(path) { let hash=2166136261; for(const c of path) h
 export function safeLink(value) { return typeof value === "string" && value.length <= 2000 && !/[\u0000-\u0020\\]/.test(value) && /^(?:\/(?!\/)|#|https?:\/\/|mailto:|tel:)/i.test(value); }
 export function safeImage(value) { return typeof value === "string" && value.length < 3_000_000 && ((/^\/assets(?:-v[23])?\/[a-zA-Z0-9_./-]+\.(webp|png|jpe?g)$/i.test(value) && !value.includes("..")) || /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value)); }
 export const STYLE_RULES = {
- fontFamily:["Tahoma","Arial","Georgia","system-ui"],fontSize:[8,200],fontWeight:[100,900],lineHeight:[.7,4],letterSpacing:[-10,30],textAlign:["start","center","end","justify"],
+ fontFamily:FONT_IDS,fontSize:[8,200],fontWeight:[100,900],lineHeight:[.7,4],letterSpacing:[-10,30],textAlign:["start","center","end","justify"],
  color:"color",backgroundColor:"color",opacity:[0,1],aspectRatio:[0,10],padding:[0,500],paddingTop:[0,500],paddingRight:[0,500],paddingBottom:[0,500],paddingLeft:[0,500],margin:[-200,500],marginTop:[-200,500],marginRight:[-200,500],marginBottom:[-200,500],marginLeft:[-200,500],
  borderWidth:[0,30],borderColor:"color",borderStyle:["solid","dashed","dotted","none"],borderRadius:[0,500],boxShadow:["none","soft","medium","strong"],objectFit:["cover","contain","fill","scale-down"],focalX:[0,100],focalY:[0,100],minWidth:[0,4000],maxWidth:[0,4000],minHeight:[0,4000],maxHeight:[0,4000],backgroundImage:"image",gridColumns:[1,6],gap:[0,200],display:["block","grid","flex"],flexDirection:["row","column"],alignItems:["start","center","end","stretch"],justifyContent:["start","center","end","space-between"]
 };

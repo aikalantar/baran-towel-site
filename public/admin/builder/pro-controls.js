@@ -1,5 +1,6 @@
 import { safeImage, effectiveLayout as schemaLayout, effectiveStyle as schemaStyle } from "./model.js";
 import {lockedBy} from './locks.js';
+import {FONT_CATALOG} from './fonts.js';
 
 const devices = ["desktop", "tablet", "mobile"];
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -205,7 +206,7 @@ const numeric = (key, label, min, max, step = 1) => ({ key, label, type: "number
 const choice = (key, label, options) => ({ key, label, type: "select", options });
 const palette = (key, label) => ({ key, label, type: "color" });
 const styleGroups = [
-  { name: "نوشتار", text: true, fields: [choice("fontFamily", "خانوادهٔ قلم", [["Tahoma", "تاهوما"], ["Arial", "آریال"], ["Georgia", "جورجیا"], ["system-ui", "قلم دستگاه"]]), numeric("fontSize", "اندازهٔ قلم · px", 8, 200), numeric("fontWeight", "وزن قلم", 100, 900, 100), numeric("lineHeight", "فاصلهٔ خطوط", .7, 4, .1), numeric("letterSpacing", "فاصلهٔ حروف · px", -10, 30, .1), choice("textAlign", "تراز متن", [["start", "ابتدا"], ["center", "وسط"], ["end", "انتها"], ["justify", "هم‌تراز"]]), palette("color", "رنگ متن")] },
+  { name: "نوشتار", text: true, fields: [choice("fontFamily", "خانوادهٔ قلم", [["Tahoma", "تاهوما"], ["Arial", "آریال"], ["Georgia", "جورجیا"], ["system-ui", "قلم دستگاه"], ...FONT_CATALOG.map(f=>[f.id,f.label])]), numeric("fontSize", "اندازهٔ قلم · px", 8, 200), numeric("fontWeight", "وزن قلم", 100, 900, 100), numeric("lineHeight", "فاصلهٔ خطوط", .7, 4, .1), numeric("letterSpacing", "فاصلهٔ حروف · px", -10, 30, .1), choice("textAlign", "تراز متن", [["start", "ابتدا"], ["center", "وسط"], ["end", "انتها"], ["justify", "هم‌تراز"]]), palette("color", "رنگ متن")] },
   { name: "رنگ و پس‌زمینه", fields: [palette("backgroundColor", "رنگ زمینه"), numeric("opacity", "شفافیت · ۰ تا ۱", 0, 1, .05), { key: "backgroundImage", label: "تصویر زمینه · آدرس کتابخانه", type: "text" }] },
   { name: "فاصله و اندازه", fields: [numeric("padding", "فاصلهٔ درونی · px", 0, 500), numeric("margin", "فاصلهٔ بیرونی · px", -200, 500), numeric("minWidth", "کمینهٔ عرض · px", 0, 4000), numeric("maxWidth", "بیشینهٔ عرض · px", 0, 4000), numeric("minHeight", "کمینهٔ ارتفاع · px", 0, 4000), numeric("maxHeight", "بیشینهٔ ارتفاع · px", 0, 4000)] },
   { name: "کادر و سایه", fields: [numeric("borderWidth", "ضخامت کادر · px", 0, 30), palette("borderColor", "رنگ کادر"), choice("borderStyle", "نوع کادر", [["none", "بدون کادر"], ["solid", "پیوسته"], ["dashed", "خط‌چین"], ["dotted", "نقطه‌چین"]]), numeric("borderRadius", "گردی گوشه · px", 0, 500), choice("boxShadow", "سایه", [["none", "بدون سایه"], ["soft", "ملایم"], ["medium", "متوسط"], ["strong", "پررنگ"]])] },
