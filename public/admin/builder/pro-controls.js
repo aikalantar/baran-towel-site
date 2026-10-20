@@ -1,13 +1,14 @@
 import { safeImage, effectiveLayout as schemaLayout, effectiveStyle as schemaStyle } from "./model.js";
 import {lockedBy} from './locks.js';
 import {FONT_CATALOG} from './fonts.js';
+import {allocateIdentityMap,remapElementIdentity,newElementID} from './identity.js';
 
 const devices = ["desktop", "tablet", "mobile"];
 const copy = value => JSON.parse(JSON.stringify(value));
 const parentOf = element => element.parentId || element.anchor;
 const free = element => (element.layoutMode || (!element.source || element.free ? "free" : "flow")) === "free";
 const rounded = value => Math.round(value * 1000) / 1000;
-const newId = () => `new-${crypto.randomUUID()}`;
+const newId = newElementID;
 
 export function inheritedStyle(element, device = "desktop") {
   return schemaStyle(element, device);
@@ -140,18 +141,13 @@ export function cloneSubtrees(elements, ids, { idFactory = newId, offset = 2, ta
   if (!roots.length) throw new Error("ابتدا عنصری را انتخاب کنید.");
   const source = elements.filter(element => included.has(element.id) && !element.deleted);
   if (source.some(element => element.source && elements.some(child => !child.deleted && parentOf(child) === element.id))) throw new Error("تکثیر ظرف اصلیِ دارای ساختار وابسته امن نیست؛ از یک بخش تازه استفاده کنید.");
-  const used = new Set(elements.map(element => element.id)), mapping = new Map();
-  for (const element of source) {
-    const id = idFactory();
-    if (used.has(id) || !/^new-[a-zA-Z0-9-]+$/.test(id)) throw new Error("شناسهٔ تکثیر معتبر یا یکتا نیست.");
-    used.add(id); mapping.set(element.id, id);
-  }
+  const mapping=allocateIdentityMap(source.map(e=>e.id),{reserved:elements.map(e=>e.id),idFactory,validate:id=>/^new-[a-zA-Z0-9-]+$/.test(id)});
   const rootSet = new Set(roots);
   const copies = source.map(element => {
-    const duplicate = copy(element);
+    const duplicate = remapElementIdentity(element,mapping);
     duplicate.id = mapping.get(element.id); duplicate.source = null; duplicate.locked = false; duplicate.deleted = false; duplicate.movable = true;
     duplicate.parentId = mapping.get(parentOf(element)) || targetParentId || parentOf(element);
-    if (targetAnchor) duplicate.anchor = targetAnchor;
+    duplicate.anchor = targetAnchor || mapping.get(element.anchor) || element.anchor;
     duplicate.responsiveStyles ||= { tablet: {}, mobile: {} };
     if (element.source) { duplicate.layoutMode = "free"; duplicate.free = true; }
     duplicate.z = Math.min(10000, (duplicate.z || 0) + 1);

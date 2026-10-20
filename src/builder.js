@@ -7,18 +7,17 @@ import { readPageMetadata, applyPageSEO, newPageSource, publicationChanges } fro
 import { digest } from "./auth.js";
 import { prepareImages } from "./builder-images.js";
 import { requiredUnlocks } from "../public/admin/builder/locks.js";
+import {stableElementID,isElementID} from '../public/admin/builder/identity.js';
+import {publishedIdentity} from './html-identity.js';
 
 // IDs depend on the original DOM location, never on editable text. Drafts are
 // pinned to a base revision; a new base requires an explicit future migration.
-function stableID(selector) {
-  let value = 2166136261;
-  for (const char of selector) value = Math.imul(value ^ char.charCodeAt(0), 16777619);
-  return `base-${(value >>> 0).toString(36)}`;
-}
+const stableID = stableElementID;
 
 export function builderPage(html, revision, path = "public/index.html", editing = true) {
   pagePath(path);
   const { document } = parseHTML(html);
+  const identity=publishedIdentity(document);
   const fields = describePage(html, path, revision).fields;
   let stored = {};
   const stateNode = document.querySelector("#builder-state");
@@ -29,11 +28,12 @@ export function builderPage(html, revision, path = "public/index.html", editing 
   // Navigation updates may insert a new node at a selector previously occupied
   // by another persisted element. Preserve all existing IDs before assigning a
   // deterministic fresh ID to such new original nodes.
-  const reservedIDs=new Set([...document.querySelectorAll('[data-builder-id]')].map(node=>node.getAttribute('data-builder-id')));
+  const reservedIDs=new Set(identity.reserved),reservedAnchors=new Set(identity.anchors.keys());
   const anchors = [];
   if (!document.querySelector("main")) throw new CMSFailure("ساختار این صفحه با ویرایشگر سازگار نیست.",422);
   for (const [index, node] of [...document.querySelectorAll("header.site-header, main > section, main > article, main > header, main > div, footer")].entries()) {
-    const id = node.getAttribute("data-builder-anchor") || `section-${node.id || index}`;
+    let id = node.getAttribute("data-builder-anchor");
+    if(!id){const preferred=`section-${node.id || index}`;id=preferred;let attempt=0;while(reservedAnchors.has(id)||reservedIDs.has(id))id=`${preferred}-${++attempt}`;reservedAnchors.add(id);}
     if (!/^[a-zA-Z0-9_-]{1,100}$/.test(id) || anchors.some(a => a.id === id)) throw new CMSFailure("شناسه بخش تکراری یا نامعتبر است.",422);
     node.setAttribute("data-builder-anchor", id);
     anchors.push({ id, label: node.querySelector("h1,h2,h3")?.textContent || node.getAttribute("aria-label") || (node.localName === "header" ? "سربرگ" : node.localName === "footer" ? "پاورقی" : `بخش ${index}`), generated:storedNodes.get(id)?.source === null, protected:node.matches('header.site-header,footer') });
@@ -50,7 +50,7 @@ export function builderPage(html, revision, path = "public/index.html", editing 
     let id = node.getAttribute("data-builder-id");
     if(!id){let attempt=0;id=stableID(selector);while(reservedIDs.has(id))id=stableID(`${selector}#${++attempt}`);reservedIDs.add(id);}
     if(storedNodes.has(id) && !storedNodes.get(id).source)continue;
-    if (!/^(base-[a-z0-9]+|new-[a-zA-Z0-9-]+)$/.test(id)) throw new CMSFailure("شناسه عنصر معتبر نیست.",422);
+    if (!isElementID(id)) throw new CMSFailure("شناسه عنصر معتبر نیست.",422);
     if (elements.some(el => el.id === id)) throw new Error("Duplicate builder ID");
     const image = entries.find(f => f.kind === "image");
     const type = image ? "image" : /^h[1-6]$/.test(node.localName) ? "heading" : node.localName === "a" ? "button" : "text";
@@ -80,6 +80,7 @@ export function builderPage(html, revision, path = "public/index.html", editing 
     const e=clone(entry);e.deleted=false;e.source=null;
     if(['text','heading','button'].includes(e.type)&&node.textContent!==e.content.text){e.content.text=node.textContent;delete e.content.runs;}
     if(e.type==='image'){e.content.src=node.getAttribute('src');e.content.alt=node.getAttribute('alt')||'';}
+    if(e.content.href!=null&&node.hasAttribute('href'))e.content.href=node.getAttribute('href');
     model.elements.push(e);
   }
   model.warningsDismissed=stored.warningsDismissed || [];

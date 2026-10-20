@@ -14,6 +14,7 @@ import {publicationMessage} from './publication-status.js';
 import {installCanvasInput} from './canvas-input.js';
 import {installDirectEdit} from './direct-edit.js';
 import {installFontPreview} from './fonts.js';
+import {newElementID} from './identity.js';
 
 const $ = selector => document.querySelector(selector);
 const frame = $("#page");
@@ -336,7 +337,7 @@ function transfer(next,ids,destination,free=false){
 }
 function add(type) {
   if (preview || locked) return;
-  const id = `new-${crypto.randomUUID()}`, parentId = $("#anchor").value, anchor=rootAnchor(parentId);
+  const id = newElementID(), parentId = $("#anchor").value, anchor=rootAnchor(parentId);
   const e = {
     id, type, anchor, parentId,layoutMode:'free',locked:false,responsiveInheritance:false,responsiveStyles:{tablet:{},mobile:{}},source: null, tag: ({ text: "p", heading: "h2", image: "img", button: "a" })[type],
     content: type === "image" ? { src: library.images[0]?.url || "/assets/images/home/baran-hero.webp", alt: "تصویر جدید" } : { text: ({ text: "متن تازه خود را اینجا بنویسید", heading: "عنوان تازه", button: "مشاهده مجموعه" })[type], ...(type === "button" ? { href: "/catalog/" } : {}) },
