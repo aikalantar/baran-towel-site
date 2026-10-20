@@ -60,6 +60,31 @@
         "revision": "5c757dbd9d37fdbbc4602494d9c5d5d9a354dee3",
         "fileSha": "f4039dbbb8c375c53aa7223e85b59ddd50d90b1d"
       }
+    },
+    {
+      "path": "public/task15-visual-canary-20261020/index.html",
+      "status": "published",
+      "managed": true,
+      "page": {
+        "id": "page-8214d949-8782-46bf-9984-5b606f28bc49",
+        "title": "آزمون موقت ویرایش بصری — Task 15",
+        "description": "آزمون موقت مالک برای لمس و قلم؛ بدون ایندکس و منو",
+        "language": "fa",
+        "direction": "rtl",
+        "canonical": "https://luxtowelco.com/task15-visual-canary-20261020/",
+        "robots": "noindex",
+        "visibility": "unlisted",
+        "ogTitle": "آزمون موقت ویرایش بصری — Task 15",
+        "ogDescription": "آزمون موقت مالک برای لمس و قلم؛ بدون ایندکس و منو",
+        "ogImage": "",
+        "menu": {
+          "included": false,
+          "label": "آزمون موقت ویرایش بصری — Task 15",
+          "order": 0
+        }
+      },
+      "updated": "2026-10-20T09:06:41.544Z",
+      "menuExplicit": false
     }
   ],
   "requests": [
