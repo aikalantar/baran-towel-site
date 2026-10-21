@@ -16,7 +16,7 @@ let outbound = 0,providerEvidence='denied';
 const fixtureVersion='11111111-1111-4111-8111-111111111111';
 const mf = new Miniflare(convertV4MiniflareOptions({
   name:"builder-release-runtime",modules:true,scriptPath:".wrangler/dry-run/cms-worker.js",compatibilityDate:"2026-07-09",
-  assets:{directory:"public",binding:"ASSETS",run_worker_first:["/api/cms/*"],routerConfig:{has_user_worker:true}},
+  assets:{directory:"public",binding:"ASSETS",run_worker_first:["/api/cms/*","/admin/builder","/admin/builder/","/admin/builder/index.html"],routerConfig:{has_user_worker:true}},
   durableObjects:{CMS_GUARD:{className:"CMSLoginGuard",useSQLite:true}},
   bindings:{CMS_USERS:JSON.stringify(accounts),CMS_SESSION_SECRET:randomBytes(48).toString("base64"),CMS_GITHUB_TOKEN:"fixture-outbound-only",CMS_REPOSITORY:"fixture/isolated",CMS_BRANCH:"main",CMS_CF_ACCOUNT_ID:'b'.repeat(32),CMS_CF_WORKER_NAME:'runtime-fixture',CMS_CF_API_TOKEN:'fixture-provider-only'},
   outboundService:async request=>{
@@ -39,7 +39,7 @@ const origin = "https://luxtowelco.com", dispatch = (path,options)=>mf.dispatchF
 const post = (body,cookie,requestOrigin=origin)=>({method:"POST",headers:{Origin:requestOrigin,"Content-Type":"application/json","X-CMS-Request":"1",...(cookie?{Cookie:cookie}:{})},body:JSON.stringify(body)});
 let passed = 0;
 try {
-  for (const path of ["/admin/","/admin/draft-safety.js","/admin/draft-recovery.css","/admin/builder/","/admin/builder/publication-status.js","/admin/builder/builder.css","/admin/builder/builder.js","/admin/builder/customer-ui.js","/admin/builder/customer.css","/admin/builder/model.js","/admin/builder/layout.js","/admin/builder/images.js","/admin/builder/image-format.js","/builder-layout.js"]) {
+  for (const path of ["/admin/","/admin/draft-safety.js","/admin/draft-recovery.css","/admin/editor/","/admin/editor/entry.js","/admin/editor/customer-editor.js","/admin/builder/runtime.js","/admin/builder/publication-status.js","/admin/builder/builder.css","/admin/builder/builder.js","/admin/builder/customer-ui.js","/admin/builder/customer.css","/admin/builder/model.js","/admin/builder/layout.js","/admin/builder/images.js","/admin/builder/image-format.js","/builder-layout.js"]) {
     const response = await dispatch(path);
     assert.equal(response.status,200);
     if(path.endsWith("/")) { assert.ok(response.headers.get("Content-Security-Policy")?.includes("script-src 'self'")); assert.ok(response.headers.get("X-Robots-Tag")?.includes("noindex")); }
@@ -52,6 +52,9 @@ try {
     const response = await dispatch("/api/cms/login",post({username:account.username,password:"fixture-runtime-password"}));
     assert.equal(response.status,200); cookies[account.role] = response.headers.get("Set-Cookie").split(";")[0];
   }
+  assert.equal((await dispatch('/admin/builder/',{redirect:'manual'})).status,302);
+  assert.equal((await dispatch('/admin/builder/',{headers:{Cookie:cookies.editor}})).status,403);
+  assert.equal((await dispatch('/admin/builder/',{headers:{Cookie:cookies.admin}})).status,200);passed++;
   const current = await (await dispatch("/api/cms/builder",{headers:{Cookie:cookies.admin}})).json();
   const model = current.model, paragraph = model.elements.find(e=>e.tag===canary.tag && e.anchor===canary.anchor);
   assert.ok(paragraph); const originalParagraph = paragraph.content.text; paragraph.content.text += canary.suffix;

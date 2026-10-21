@@ -1,10 +1,12 @@
 import { imageInfo } from "./image-format.js";
 
 export async function optimizeImage(file) {
-  if (!["image/png","image/jpeg","image/webp"].includes(file.type) || file.size > 20 * 1024 * 1024) throw new Error("PNG، JPEG یا WebP حداکثر ۲۰ مگابایت مجاز است.");
+  // Safari can supply an empty MIME type for an otherwise valid WebP file.
+  // The complete binary parser remains authoritative; a declared mismatch fails.
+  if (file.type && !["image/png","image/jpeg","image/webp"].includes(file.type) || file.size > 20 * 1024 * 1024) throw new Error("PNG، JPEG یا WebP حداکثر ۲۰ مگابایت مجاز است.");
   const info = imageInfo(new Uint8Array(await file.arrayBuffer()));
-  if (info.mime !== file.type || !info.width || !info.height || info.width > 8000 || info.height > 8000 || info.width * info.height > 40_000_000) throw new Error("نوع یا ابعاد تصویر مجاز نیست (حداکثر ۸۰۰۰ پیکسل و ۴۰ مگاپیکسل).");
-  const bitmap = await createImageBitmap(file);
+  if (file.type && info.mime !== file.type || !info.width || !info.height || info.width > 8000 || info.height > 8000 || info.width * info.height > 40_000_000) throw new Error("نوع یا ابعاد تصویر مجاز نیست (حداکثر ۸۰۰۰ پیکسل و ۴۰ مگاپیکسل).");
+  const bitmap = await createImageBitmap(file.type?file:new Blob([file],{type:info.mime}));
   try {
     const scale = Math.min(1, 1920 / Math.max(bitmap.width, bitmap.height));
     const width = Math.max(1, Math.round(bitmap.width * scale)), height = Math.max(1, Math.round(bitmap.height * scale));

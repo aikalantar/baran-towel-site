@@ -21,6 +21,7 @@ import {
 import { GitHubRepository } from "./github.js";
 import { builderPage, publishBuilder, previewBuilder } from "./builder.js";
 import { listPages, preparePage, pageAction } from "./pages.js";
+import {cmsPermissions} from './cms-permissions.js';
 export { CMSLoginGuard } from "./auth.js";
 
 const headers = {
@@ -129,6 +130,7 @@ export async function handleCMS(request, env, options = {}) {
         : await session(request, env);
       return json({
         user,
+        permissions: cmsPermissions(user),
         configured: localMode || configured(env),
         mode: localMode ? "local" : "github",
         site: SITE,
@@ -152,7 +154,9 @@ export async function handleCMS(request, env, options = {}) {
     }
     if(endpoint === "/builder/pages/prepare" && request.method === "POST") {
       if(!["admin","editor"].includes(user.role))throw new CMSFailure("دسترسی ویرایش ندارید.",403);
-      const prepared=await preparePage(repo,await readBody(request));
+      const body=await readBody(request);
+      if(!cmsPermissions(user).studio && (body.kind==='duplicate'||body.sourcePath||body.template&&body.template!=='blank'))throw new CMSFailure('طراحی و تکثیر حرفه‌ای فقط برای مدیر مجاز است.',403);
+      const prepared=await preparePage(repo,body);
       const page=builderPage(prepared.content,prepared.revision,prepared.path);
       page.model.base.creation=prepared.creation;
       page.model.page=prepared.creation.page;
@@ -246,6 +250,12 @@ export async function handleCMS(request, env, options = {}) {
         ),
       });
     }
+    if (endpoint === '/contacts/preview' && request.method === 'POST') {
+      const body=await readBody(request),head=await repo.head();
+      if(body.head!==head)throw new CMSFailure('اطلاعات سایت تغییر کرده است؛ پیش‌نویس تماس را نگه دارید و نسخهٔ فعلی را بررسی کنید.',409);
+      const path=pagePath(body.path||'public/index.html');
+      return json({html:preview(applyContacts((await repo.read(path,head)).content,body.values)),draft:true});
+    }
     if (endpoint === "/contacts" && request.method === "POST") {
       if (user.role !== "admin")
         throw new CMSFailure(
@@ -287,6 +297,7 @@ export async function handleCMS(request, env, options = {}) {
       request.method === "POST"
     ) {
       const body = await readBody(request);
+      if(!cmsPermissions(user).studio && body.operations?.length)throw new CMSFailure('تغییر ساختار محصول فقط برای مدیر مجاز است.',403);
       const images = body.images || [];
       const imageChanges = await uploadChanges(images);
       let html, path, file;
@@ -415,8 +426,14 @@ export async function handleCMS(request, env, options = {}) {
 }
 export default {
   async fetch(request, env) {
-    if (new URL(request.url).pathname.startsWith("/api/cms/"))
+    const url=new URL(request.url);
+    if (url.pathname.startsWith("/api/cms/"))
       return handleCMS(request, env);
+    if(['/admin/builder','/admin/builder/','/admin/builder/index.html'].includes(url.pathname)){
+      const user=await session(request,env);
+      if(!user)return new Response(null,{status:302,headers:{Location:'/admin/?next='+encodeURIComponent('/admin/builder/'+url.search),'Cache-Control':'no-store'}});
+      if(!cmsPermissions(user).studio)return new Response('<!doctype html><html lang="fa" dir="rtl"><meta charset="utf-8"><title>دسترسی طراحی</title><p>ابزارهای طراحی فقط برای مدیر مجاز است.</p><a href="/admin/editor/">باز کردن ویرایشگر سایت</a></html>',{status:403,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Robots-Tag':'noindex, nofollow'}});
+    }
     return env.ASSETS.fetch(request);
   },
 };

@@ -37,7 +37,7 @@ test('preview uses the exact publisher with no commit, files, navigation or regi
  const {repo,state}=await githubSimulation(),base=await preparedModel(repo,'preview-only'),model=clone(base.model),anchor=model.sections.find(s=>!s.protected).id;
  model.elements.push(...createBlock('faq',{anchor}),...createBlock('gallery',{anchor}));
  const before=state.head,files=[...state.files];
- const result=await previewBuilder(repo,model,{username:'fixture-editor',role:'editor'});
+ const result=await previewBuilder(repo,model,{username:'fixture-admin',role:'admin'});
  assert.equal(result.draft,true);assert.equal(state.head,before);assert.equal(state.commits.length,0);assert.deepEqual([...state.files],files);
  const doc=parseHTML(result.html).document;assert.ok(doc.querySelector('details>summary'));assert.ok(doc.querySelector('[data-builder-kind=gallery] img'));assert.equal(doc.title,'صفحه ساخته‌شده');
 });

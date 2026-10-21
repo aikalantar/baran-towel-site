@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="robots" content="noindex,nofollow"><title>ویرایش سایت باران</title>
+  <link rel="icon" href="/favicon-v2.ico"><link rel="manifest" href="/admin/cms.webmanifest">
+  <link rel="apple-touch-icon" href="/apple-touch-icon-v2.png"><meta name="theme-color" content="#475642">
+  <meta name="apple-mobile-web-app-capable" content="yes"><link rel="stylesheet" href="/admin/pwa.css">
+  <link rel="stylesheet" href="/admin/editor/editor.css"><script type="module" src="/admin/editor/entry.js"></script>
+</head>
+<body data-experience="customer" class="direct-edit">
+  <div id="gate"><h1>ویرایش سایت باران</h1><p id="gate-message" role="status">در حال باز کردن سایت…</p><a id="builder-login" href="/admin/">ورود به حساب</a></div>
+  <div id="builder" hidden>
+    <header class="toolbar">
+      <button id="customer-menu" aria-expanded="false" aria-controls="customer-tasks">☰ کارها</button>
+      <strong id="page-heading">سایت شما</strong>
+      <div class="tools"><button id="undo" aria-label="واگرد">↶</button><button id="redo" aria-label="بازانجام">↷</button><button id="save">ذخیره</button><button id="publish" class="primary">انتشار</button></div>
+    </header>
+    <div class="status-strip"><span id="save-status" role="status" aria-live="polite">پیش‌نویس این مرورگر؛ هنوز منتشر نشده</span><button id="public-preview">پیش‌نمایش</button></div>
+    <div id="publication-status" role="status" aria-live="polite"></div><div class="publication-actions"><button id="check-publication" hidden>بررسی انتشار</button><button id="continue-editing" hidden>ادامهٔ ویرایش</button></div>
+    <nav id="customer-tasks" aria-label="کارهای سایت" hidden>
+      <button data-task="edit">ویرایش سایت</button><button data-task="pages">صفحات</button><button data-task="products">محصولات</button><button data-task="images">تصاویر</button><button data-task="contact">تماس</button><button data-task="preview">پیش‌نمایش</button><button data-task="publish">انتشار</button>
+      <p id="customer-publish-help" class="customer-note" hidden>حساب شما برای ویرایش محتواست؛ انتشار را مدیر سایت انجام می‌دهد. پیش‌نویس را ذخیره کنید و پشتیبان را به مدیر تحویل دهید.</p>
+      <details><summary>بیشتر</summary><button id="customer-backup">دانلود پشتیبان</button><label>بازیابی پشتیبان<input id="import" type="file" accept="application/json,.json"></label><button id="customer-history">نسخه‌های قبلی</button><a id="studio-link" hidden href="/admin/builder/">Designer Studio — طراحی حرفه‌ای</a><a href="/admin/?legacy=1">پیش‌نویس‌های ویرایشگر قبلی</a><a href="/admin/">پیشخوان مدیریت</a></details>
+    </nav>
+    <div class="workspace"><main class="canvas"><div id="frame-wrap"><iframe id="page" title="سایت واقعی شما؛ برای ویرایش لمس کنید" sandbox="allow-same-origin"></iframe></div></main></div>
+    <p id="customer-hint">برای ویرایش، نوشته یا تصویر را روی سایت لمس کنید.</p>
+    <section id="customer-selection" aria-label="ویرایش انتخاب" hidden>
+      <div class="sheet-header"><strong id="selection-label">ویرایش</strong><button id="selection-close">تمام شد ×</button></div>
+      <p id="customer-locked" role="status" hidden>این بخش محافظت شده است؛ برای تغییر با مدیر سایت هماهنگ کنید.</p>
+      <div id="properties" hidden>
+        <label id="text-group">نوشته<textarea id="text" rows="3" maxlength="12000" dir="auto"></textarea></label>
+        <div id="image-group" hidden><img id="selected-image-preview" alt="تصویر انتخاب‌شده"><button id="customer-replace-image">انتخاب تصویر دیگر</button><label class="upload">بارگذاری از دستگاه<input id="upload" type="file" accept="image/png,image/jpeg,image/webp"></label><label>توضیح تصویر<input id="alt" dir="auto" maxlength="2000"></label></div>
+        <label id="link-group" hidden>آدرس پیوند<input id="href" dir="ltr" maxlength="2000"></label>
+      </div>
+    </section>
+  </div>
+  <div id="notice" role="alert" hidden></div>
+  <dialog id="customer-dialog" aria-labelledby="customer-dialog-title"><div class="sheet-header"><h2 id="customer-dialog-title"></h2><button id="customer-dialog-close">بستن ×</button></div><p id="customer-error" role="alert"></p><div id="customer-dialog-body"></div></dialog>
+  <dialog id="publish-dialog" aria-labelledby="publish-title"><h2 id="publish-title">انتشار همین صفحه</h2><p id="publish-description"></p><p>ذخیره فقط پیش‌نویس را در این مرورگر نگه می‌دارد. با تأیید انتشار، محتوای سایت تغییر می‌کند. نتیجهٔ انتشار آنلاین جداگانه بررسی می‌شود.</p><label id="publish-unlock-group" hidden><input id="publish-unlock-confirm" type="checkbox">تأیید تغییر بخش محافظت‌شده <span id="publish-unlock-count"></span></label><button id="publish-confirm" class="primary">تأیید انتشار</button><button id="publish-cancel">انصراف</button></dialog>
+  <dialog id="output-dialog"><div class="sheet-header"><strong>پیش‌نمایش؛ هنوز منتشر نشده</strong><button id="output-close">بازگشت به ویرایش</button></div><iframe id="output-frame" title="پیش‌نمایش سایت" sandbox="allow-scripts"></iframe></dialog>
+</body></html>

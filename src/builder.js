@@ -8,6 +8,7 @@ import { digest } from "./auth.js";
 import { prepareImages } from "./builder-images.js";
 import { requiredUnlocks } from "../public/admin/builder/locks.js";
 import {stableElementID,isElementID} from '../public/admin/builder/identity.js';
+import {enforceContentPermission} from './cms-permissions.js';
 import {publishedIdentity} from './html-identity.js';
 
 // IDs depend on the original DOM location, never on editable text. Drafts are
@@ -174,6 +175,7 @@ export async function publishBuilder(repo, body, user, localMode) {
   if(body.model.base.creation){base.model.base.creation=clone(body.model.base.creation);base.model.page=clone(body.model.base.creation.page);}
   const model=migrateModel(body.model,base.model,base.anchors);
   if (!validModel(model,base.model,base.anchors)) throw new CMSFailure("مدل صفحه، سبک یا ساختار والدها معتبر نیست؛ پیش‌نویس محفوظ است.");
+  enforceContentPermission(user,base.model,model);
   validatePublishedLocks(base.model,model,unlockIds);
   const original = new Map(base.model.elements.map(e => [e.id,e]));
   for (const e of model.elements) e.imageChanged = e.type === "image" && e.content.src !== original.get(e.id)?.content.src;
