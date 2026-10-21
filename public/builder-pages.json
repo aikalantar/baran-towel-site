@@ -106,14 +106,14 @@
         "visibility": "unlisted",
         "ogTitle": "آزمون موقت هویت CMS",
         "ogDescription": "",
-        "ogImage": "",
+        "ogImage": "/assets/uploads/483a8b3fb751fdf93bd231baf7586fbaf3fb146759423646179e2399e279e2fd.webp",
         "menu": {
           "included": false,
-          "label": "آزمون موقت",
+          "label": "آزمون موقت هویت CMS",
           "order": 0
         }
       },
-      "updated": "2026-10-21T03:21:53.434Z",
+      "updated": "2026-10-21T03:23:04.062Z",
       "menuExplicit": false
     }
   ],
