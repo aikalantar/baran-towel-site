@@ -32,12 +32,12 @@ function request(endpoint,{method='POST',cookie,body,raw,headers={}}={}){
  return new Request(origin+'/api/cms'+endpoint,{method,headers:{Origin:origin,'X-CMS-Request':'1','Content-Type':'application/json',...(cookie?{Cookie:cookie}:{}),...headers},...(method!=='GET'?{body:raw??JSON.stringify(body)}:{})});
 }
 
-test('Task6 API: anonymous access, editor publication, cross-site and missing CSRF markers cannot mutate; editor preview is read-only',async()=>{
+test('Task6 API: anonymous access, forbidden editor design, cross-site and missing CSRF markers cannot mutate; preview is read-only',async()=>{
  const {repo,state}=await githubSimulation(),base=await pageFor(repo),{env,cookies}=await authFixture,before=snapshot(state);
  for(const endpoint of ['/builder','/builder/pages','/library','/history?path=public%2Findex.html'])assert.equal((await handleCMS(request(endpoint,{method:'GET'}),env,{repo})).status,401,endpoint);
  for(const endpoint of ['/builder/publish','/builder/pages/action']){
   assert.equal((await handleCMS(request(endpoint,{body:bodyFor(base.model)}),env,{repo})).status,401);
-  assert.equal((await handleCMS(request(endpoint,{cookie:cookies.editor,body:bodyFor(base.model)}),env,{repo})).status,403);
+  assert.equal((await handleCMS(request(endpoint,{cookie:cookies.editor,body:endpoint==='/builder/pages/action'?{path:'public/index.html',action:'slug'}:bodyFor({...base.model,elements:base.model.elements.map((e,i)=>i?e:{...e,style:{...e.style,color:'#123456'}})})}),env,{repo})).status,403);
  }
  for(const headers of [{Origin:'https://attacker.invalid'},{Origin:'null'},{Origin:''},{'X-CMS-Request':''}])assert.equal((await handleCMS(request('/builder/publish',{cookie:cookies.admin,body:bodyFor(base.model),headers}),env,{repo})).status,403);
  assert.equal((await handleCMS(request('/builder/preview',{cookie:cookies.editor,body:{model:base.model}}),env,{repo})).status,200);

@@ -59,10 +59,10 @@ try {
   const model = current.model, paragraph = model.elements.find(e=>e.tag===canary.tag && e.anchor===canary.anchor);
   assert.ok(paragraph); const originalParagraph = paragraph.content.text; paragraph.content.text += canary.suffix;
   const body = {requestId:crypto.randomUUID(),model};
-  assert.equal((await dispatch("/api/cms/builder/publish",post(body,cookies.editor))).status,403);
+
   assert.equal((await dispatch("/api/cms/builder/publish",post(body,cookies.admin,"https://bad.invalid"))).status,403);
   const before = state.commits.length;
-  const published = await dispatch("/api/cms/builder/publish",post(body,cookies.admin)); assert.equal(published.status,200);
+  const published = await dispatch("/api/cms/builder/publish",post(body,cookies.editor)); assert.equal(published.status,200);
   assert.equal(state.commits.length,before+1);
   const output = state.files.get("public/index.html").toString();
   assert.ok(parseHTML(output).document.querySelector(`[data-builder-id="${paragraph.id}"]`).textContent.endsWith("(آزمون انتشار کنترل‌شده)")); passed++;

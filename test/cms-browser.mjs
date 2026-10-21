@@ -92,6 +92,7 @@ try {
   await page
     .locator('[data-select-image="public/assets/products/mozhan.webp"]')
     .click();
+  await page.waitForFunction(()=>document.querySelector(".image-edit-head img")?.getAttribute("src")==="/assets/products/mozhan.webp");
   await page.locator("[data-alt]").first().fill("عکس آزمایشی موژان");
   await page.getByRole("button", { name: "به‌روزرسانی پیش‌نمایش" }).click();
   await page

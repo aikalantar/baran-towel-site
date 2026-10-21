@@ -20,8 +20,10 @@ import {
 } from "./auth.js";
 import { GitHubRepository } from "./github.js";
 import { builderPage, publishBuilder, previewBuilder } from "./builder.js";
-import { listPages, preparePage, pageAction } from "./pages.js";
-import {cmsPermissions} from './cms-permissions.js';
+import { listPages, preparePage, pageAction,generatedPagePath } from "./pages.js";
+import {cmsPermissions,contentUser,canAccessPage,assertPageAccess,assertPageCreation,assertPageAction,assertContacts,scopedRepository} from './cms-permissions.js';
+import {authorizeLegacy,authorizeLegacyResult,authorizeContacts} from './legacy-permissions.js';
+import {imageInfo} from '../public/admin/builder/image-format.js';
 export { CMSLoginGuard } from "./auth.js";
 
 const headers = {
@@ -61,7 +63,9 @@ async function readBody(request) {
     offset += part.byteLength;
   }
   try {
-    return JSON.parse(new TextDecoder().decode(merged));
+    const body=JSON.parse(new TextDecoder().decode(merged));
+    if(!body||typeof body!=='object'||Array.isArray(body))throw Error();
+    return body;
   } catch {
     throw new CMSFailure("محتوای درخواست قابل خواندن نیست.");
   }
@@ -80,7 +84,7 @@ async function uploadChanges(images) {
   const changes = [];
   for (const image of images) {
     if (
-      typeof image.data !== "string" ||
+      !image || typeof image.data !== "string" ||
       image.data.length > 6 * 1024 * 1024 ||
       !/^[A-Za-z0-9+/]+={0,2}$/.test(image.data)
     )
@@ -111,6 +115,7 @@ async function uploadChanges(images) {
     )
       throw new CMSFailure("نوع یا حجم تصویر مجاز نیست.");
     const path = `public/assets/uploads/${await digest(bytes)}.${ext}`;
+    try{const info=imageInfo(bytes);if(info.mime!==mime||info.width>8000||info.height>8000||info.width*info.height>40000000)throw Error();}catch{throw new CMSFailure('ساختار یا ابعاد فایل تصویر معتبر نیست.');}
     if (image.path !== path)
       throw new CMSFailure("شناسه تصویر با فایل تطابق ندارد.");
     changes.push({ path, content: image.data, encoding: "base64" });
@@ -127,7 +132,7 @@ export async function handleCMS(request, env, options = {}) {
     if (endpoint === "/session" && request.method === "GET") {
       const user = localMode
         ? { username: "local", name: "مدیریت محلی", role: "admin" }
-        : await session(request, env);
+        : contentUser(await session(request, env),env);
       return json({
         user,
         permissions: cmsPermissions(user),
@@ -145,31 +150,35 @@ export async function handleCMS(request, env, options = {}) {
       return json({ ok: true }, 200, { "Set-Cookie": logoutCookie() });
     const user = localMode
       ? { username: "local", role: "admin" }
-      : await session(request, env);
+      : contentUser(await session(request, env),env);
     if (!user) throw new CMSFailure("برای ادامه وارد پنل شوید.", 401);
-    const repo = options.repo || new GitHubRepository(env);
+    const repo = scopedRepository(options.repo || new GitHubRepository(env),user);
     if(endpoint === "/builder/pages" && request.method === "GET") {
       if(!["admin","editor"].includes(user.role))throw new CMSFailure("دسترسی ویرایش ندارید.",403);
-      return json(await listPages(repo,url.searchParams.get("path")));
+      const inspect=url.searchParams.get('path');if(inspect)assertPageAccess(user,inspect);
+      const listing=await listPages(repo,inspect);listing.pages=listing.pages.filter(p=>canAccessPage(user,p.path));return json(listing);
     }
     if(endpoint === "/builder/pages/prepare" && request.method === "POST") {
       if(!["admin","editor"].includes(user.role))throw new CMSFailure("دسترسی ویرایش ندارید.",403);
       const body=await readBody(request);
+      assertPageCreation(user,generatedPagePath(body.slug,body.language||'fa'));
       if(!cmsPermissions(user).studio && (body.kind==='duplicate'||body.sourcePath||body.template&&body.template!=='blank'))throw new CMSFailure('طراحی و تکثیر حرفه‌ای فقط برای مدیر مجاز است.',403);
       const prepared=await preparePage(repo,body);
+      assertPageCreation(user,prepared.path,prepared.creation);
       const page=builderPage(prepared.content,prepared.revision,prepared.path);
       page.model.base.creation=prepared.creation;
       page.model.page=prepared.creation.page;
       return json(page);
     }
     if(endpoint === "/builder/pages/action" && request.method === "POST") {
-      if(user.role!=="admin")throw new CMSFailure("تغییر صفحات منتشرشده فقط برای مدیر مجاز است.",403);
-      return json(await pageAction(repo,await readBody(request),user,localMode));
+      const body=await readBody(request);assertPageAction(user,body);
+      return json(await pageAction(repo,body,user,localMode));
     }
     if (endpoint === "/builder" && request.method === "GET") {
       if (!["admin", "editor"].includes(user.role))
         throw new CMSFailure("دسترسی ویرایش ندارید.", 403);
       const path = pagePath(url.searchParams.get("path") || "public/index.html");
+      assertPageAccess(user,path);
       const current = await repo.read(path);
       const ref = url.searchParams.get("ref");
       if (ref && !(localMode?/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/:/^[a-f0-9]{40}$/).test(ref)) throw new CMSFailure("نسخه بازگردانی معتبر نیست.");
@@ -184,7 +193,7 @@ export async function handleCMS(request, env, options = {}) {
       return json(await previewBuilder(repo,body?.model,user,body?.unlockIds));
     }
     if (endpoint === "/builder/publish" && request.method === "POST") {
-      if (user.role !== "admin") throw new CMSFailure("انتشار فقط برای مدیر مجاز است؛ پیش‌نویس را برای مدیر خروجی بگیرید.",403);
+      if (!cmsPermissions(user).publish) throw new CMSFailure('انتشار برای این حساب مجاز نیست.',403);
       return json(await publishBuilder(repo,await readBody(request),user,localMode));
     }
     if (endpoint === "/builder/status" && request.method === "GET")
@@ -198,7 +207,7 @@ export async function handleCMS(request, env, options = {}) {
           .filter(
             (f) =>
               /^public\/(?:[a-z0-9-]+\/)*index\.html$/.test(f.path) &&
-              !f.path.startsWith("public/admin/"),
+              !f.path.startsWith("public/admin/") && canAccessPage(user,f.path),
           )
           .map((f) => ({
             path: f.path,
@@ -221,6 +230,7 @@ export async function handleCMS(request, env, options = {}) {
     }
     if (endpoint === "/page" && request.method === "GET") {
       const path = pagePath(url.searchParams.get("path"));
+      assertPageAccess(user,path);
       const current = await repo.read(path);
       const ref = url.searchParams.get("ref");
       if (ref && !/^[a-f0-9]{40}$/.test(ref))
@@ -237,12 +247,13 @@ export async function handleCMS(request, env, options = {}) {
     }
     if (endpoint === "/history" && request.method === "GET")
       return json({
-        entries: await repo.history(pagePath(url.searchParams.get("path"))),
+        entries: await repo.history(assertPageAccess(user,url.searchParams.get("path"))),
       });
     if (endpoint === "/status" && request.method === "GET")
       return json(await repo.status(url.searchParams.get("sha")));
     if (endpoint === "/contacts" && request.method === "GET") {
       const head = await repo.head();
+      assertContacts(user,(await repo.tree(head)).filter(f=>/^public\/(?:[a-z0-9-]+\/)*index\.html$/.test(f.path)&&!f.path.startsWith('public/admin/')).map(f=>f.path));
       return json({
         head,
         values: readContacts(
@@ -254,10 +265,12 @@ export async function handleCMS(request, env, options = {}) {
       const body=await readBody(request),head=await repo.head();
       if(body.head!==head)throw new CMSFailure('اطلاعات سایت تغییر کرده است؛ پیش‌نویس تماس را نگه دارید و نسخهٔ فعلی را بررسی کنید.',409);
       const path=pagePath(body.path||'public/index.html');
-      return json({html:preview(applyContacts((await repo.read(path,head)).content,body.values)),draft:true});
+      assertPageAccess(user,path);assertContacts(user,(await repo.tree(head)).filter(f=>/^public\/(?:[a-z0-9-]+\/)*index\.html$/.test(f.path)&&!f.path.startsWith('public/admin/')).map(f=>f.path));
+      const current=(await repo.read(path,head)).content,next=applyContacts(current,body.values);authorizeContacts(user,path,current,body.values);
+      return json({html:preview(next),draft:true});
     }
     if (endpoint === "/contacts" && request.method === "POST") {
-      if (user.role !== "admin")
+      if (!cmsPermissions(user).publish)
         throw new CMSFailure(
           "فقط مدیر می‌تواند اطلاعات تماس را منتشر کند.",
           403,
@@ -271,17 +284,16 @@ export async function handleCMS(request, env, options = {}) {
         );
       const tree = await repo.tree(head),
         changes = [];
+      assertContacts(user,tree.filter(f=>/^public\/(?:[a-z0-9-]+\/)*index\.html$/.test(f.path)&&!f.path.startsWith('public/admin/')).map(f=>f.path));
       for (const entry of tree.filter(
         (f) =>
           /^public\/(?:[a-z0-9-]+\/)*index\.html$/.test(f.path) &&
           !f.path.startsWith("public/admin/"),
       )) {
+        const current=(await repo.read(entry.path,head)).content,next=applyContacts(current,body.values);authorizeContacts(user,entry.path,current,body.values);
         changes.push({
           path: entry.path,
-          content: applyContacts(
-            (await repo.read(entry.path, head)).content,
-            body.values,
-          ),
+          content: next,
         });
       }
       return json(
@@ -297,13 +309,13 @@ export async function handleCMS(request, env, options = {}) {
       request.method === "POST"
     ) {
       const body = await readBody(request);
-      if(!cmsPermissions(user).studio && body.operations?.length)throw new CMSFailure('تغییر ساختار محصول فقط برای مدیر مجاز است.',403);
       const images = body.images || [];
       const imageChanges = await uploadChanges(images);
       let html, path, file;
       const head = await repo.head();
       const changes = [];
       if (body.article) {
+        if(user.role!=='admin'&&(body.article.page||body.article.sourcePath))throw new CMSFailure('تغییر قالب مقاله فقط برای مدیر مجاز است.',403);
         if (body.head !== head && endpoint === "/publish")
           throw new CMSFailure(
             "نسخه سایت تغییر کرده است. فهرست صفحات را تازه کنید.",
@@ -321,6 +333,7 @@ export async function handleCMS(request, env, options = {}) {
         if (tree.some((f) => f.path === article.path))
           throw new CMSFailure("مقاله‌ای با این آدرس وجود دارد.");
         ({ path, html } = article);
+        assertPageAccess(user,path);if(user.role!=='admin'&&user.contentAccess?.createPages===false)throw new CMSFailure('ساخت صفحه مجاز نیست.',403);
         if (endpoint === "/publish") {
           const indexPath =
             body.article.locale === "en"
@@ -342,6 +355,7 @@ export async function handleCMS(request, env, options = {}) {
         }
       } else {
         path = pagePath(body.path);
+        assertPageAccess(user,path);
         file = await repo.read(path, head);
         if (body.revision !== file.sha)
           throw new CMSFailure(
@@ -353,11 +367,13 @@ export async function handleCMS(request, env, options = {}) {
         const source = body.restoreCommit
           ? await repo.read(path, body.restoreCommit)
           : file;
+        await authorizeLegacy(user,repo,head,path,file.content,source.content,body);
         html = applyChanges(
           source.content,
           body.updates || [],
           body.operations || [],
         );
+        authorizeLegacyResult(user,path,file.content,html,body.operations||[]);
       }
       const document = describePage(html, path, "preview");
       const tree = await repo.tree(head);
@@ -370,7 +386,7 @@ export async function handleCMS(request, env, options = {}) {
           throw new CMSFailure("یکی از تصاویر در کتابخانه موجود نیست.");
       }
       if (endpoint === "/preview") return json({ html: preview(html, images) });
-      if (user.role !== "admin")
+      if (!cmsPermissions(user).publish)
         throw new CMSFailure(
           "انتشار نهایی به دسترسی مدیر نیاز دارد. می‌توانید پیش‌نویس را دانلود و برای مدیر ارسال کنید.",
           403,

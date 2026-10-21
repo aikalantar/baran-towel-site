@@ -583,7 +583,7 @@ async function loadPage(path, ref = "", fresh = false, prepared = null) {
   selected = []; originals.clear(); doc = null; preview = false; publication = null; publishRequest = null;
   document.body.classList.remove("preview"); $("#preview").setAttribute("aria-pressed","false"); $("#preview").textContent = "پیش‌نمایش";
   $("#publication-status").textContent = ""; $("#check-publication").hidden = true; $("#continue-editing").hidden = true;
-  $("#publish").disabled = sessionInfo.user.role !== "admin";
+  $("#publish").disabled = !sessionInfo.permissions.publish;
   if(![...$('#page-selector').options].some(o=>o.value===path)){const option=document.createElement('option');option.value=path;option.textContent=`پیش‌نویس · ${path.slice(7)}`;$('#page-selector').append(option);}
   $("#page-selector").value = path;
   $("#page-heading").textContent = `${base.model.base.title}${ref ? " — بازگردانی در پیش‌نویس" : ""}`;
@@ -643,7 +643,7 @@ async function boot() {
   const requested = new URL(location.href).searchParams.get("path");
   const ref = new URL(location.href).searchParams.get("ref") || "";
   const prepared=requested?await dbRecord(`prepared:${user}:${requested}`):null;
-  await loadPage(library.pages.some(p => p.path === requested)||prepared ? requested : "public/index.html", /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(ref) ? ref : "");
+  await loadPage(library.pages.some(p => p.path === requested)||prepared ? requested : (library.pages.find(p=>p.path==="public/index.html")||library.pages[0])?.path || "public/index.html", /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(ref) ? ref : "");
 }
 
 function dbRecord(key, value) {
@@ -703,7 +703,7 @@ $("#continue-editing").onclick = async () => {
 };
 $("#check-publication").onclick = async()=>{const button=$("#check-publication");button.disabled=true;try{await status();}finally{button.disabled=false;}};
 $("#publish").onclick = () => {
-  if (sessionInfo.user.role !== "admin" || publishing) return;
+  if (!sessionInfo.permissions.publish || publishing) return;
   $("#publish-description").textContent = sessionInfo.mode === "local" ? "صفحه و تصاویر در پروژه محلی ذخیره می‌شوند. هیچ Push یا Deploy انجام نمی‌شود." : customerExperience ? `تمام تغییرات صفحهٔ «${model().page.title}» برای انتشار ثبت می‌شوند. پیش‌نویس و تاریخچه محفوظ می‌مانند.` : "صفحه و تصاویر در GitHub ثبت می‌شوند؛ روند استقرار تنظیم‌شده ممکن است آغاز شود.";
   const unlockIds=requiredUnlocks(base.model,model());
   $('#publish-unlock-group').hidden=!unlockIds.length;
@@ -715,7 +715,7 @@ $("#publish").onclick = () => {
 $('#publish-unlock-confirm').onchange=event=>{$('#publish-confirm').disabled=!event.target.checked&&requiredUnlocks(base.model,model()).length>0;};
 $("#publish-cancel").onclick = () => $("#publish-dialog").close();
 $("#publish-confirm").onclick = async () => {
-  if (publishing || sessionInfo.user.role !== "admin") return;
+  if (publishing || !sessionInfo.permissions.publish) return;
   const unlockIds=requiredUnlocks(base.model,model()).sort();
   if(unlockIds.length&&!$('#publish-unlock-confirm').checked)return notice('برای ثبت تغییرات زیر ظرف قفل‌شده، تأیید بازکردن قفل را انتخاب کنید.');
   $("#publish-dialog").close(); publishing = true;
@@ -746,7 +746,7 @@ $("#publish-confirm").onclick = async () => {
     if(result.mode!=='local')monitorPublication(result.sha);
     drawSelection(); updateHistory();
   } catch (error) { $("#publication-status").textContent = `${error.message} پیش‌نویس و تاریخچه حفظ شدند.`; notice(error.message); }
-  finally { publishing = false; $(".workspace").inert = false; $("#publish").disabled = !!publication?.result || sessionInfo.user.role !== "admin"; updateHistory(); properties(); }
+  finally { publishing = false; $(".workspace").inert = false; $("#publish").disabled = !!publication?.result || !sessionInfo.permissions.publish; updateHistory(); properties(); }
 };
 async function refreshLibrary(){library=await api('/library');const previous=$('#page-selector').value;$('#page-selector').replaceChildren();for(const page of library.pages){const option=document.createElement('option');option.value=page.path;option.textContent=`${page.language.toUpperCase()} · ${page.route}`;$('#page-selector').append(option);}$('#page-selector').value=previous;return library;}
 function blockLibrary(){const query=$('#block-search').value.trim().toLowerCase(),holder=$('#block-list');holder.replaceChildren();for(const block of BLOCKS.filter(b=>[b.label,b.category,b.description,b.id].join(' ').toLowerCase().includes(query))){const button=document.createElement('button');button.dataset.block=block.id;button.draggable=true;const visual=document.createElement('span');visual.className='block-preview';visual.textContent=block.preview;button.append(visual,document.createTextNode(block.label));const small=document.createElement('small');small.textContent=block.description;button.append(small);button.onclick=()=>insertBlock(block.id);button.ondragstart=event=>{event.dataTransfer.setData('text/x-baran-block',block.id);event.dataTransfer.effectAllowed='copy';};holder.append(button);}}

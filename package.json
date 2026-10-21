@@ -7,7 +7,7 @@
     "dev": "node scripts/cms-local.mjs",
     "dev:cloudflare": "wrangler dev --port 4175",
     "cms:setup": "node scripts/cms-setup.mjs",
-    "test": "node --test --test-concurrency=2 test/cms.test.mjs test/cms-setup.test.mjs test/builder.test.mjs test/builder-publish.test.mjs test/release-security.test.mjs test/schema-v2.test.mjs test/blocks.test.mjs test/pages.test.mjs test/pro-controls.test.mjs test/freeform-publish.test.mjs test/locks.test.mjs test/local-history.test.mjs test/migration-v2.test.mjs test/task6-blocks-controls.test.mjs test/task6-security-pages.test.mjs test/local-resilience.test.mjs test/stabilization.test.mjs test/navigation-pwa.test.mjs test/direct-edit.test.mjs test/identity-interop.test.mjs test/customer-editor.test.mjs",
+    "test": "node --test --test-concurrency=2 test/cms.test.mjs test/cms-setup.test.mjs test/builder.test.mjs test/builder-publish.test.mjs test/release-security.test.mjs test/schema-v2.test.mjs test/blocks.test.mjs test/pages.test.mjs test/pro-controls.test.mjs test/freeform-publish.test.mjs test/locks.test.mjs test/local-history.test.mjs test/migration-v2.test.mjs test/task6-blocks-controls.test.mjs test/task6-security-pages.test.mjs test/local-resilience.test.mjs test/stabilization.test.mjs test/navigation-pwa.test.mjs test/direct-edit.test.mjs test/identity-interop.test.mjs test/customer-editor.test.mjs test/customer-publishing.test.mjs",
     "test:builder": "node test/builder-browser.mjs",
     "test:builder:publish": "node test/builder-publish-browser.mjs",
     "test:release:runtime": "npm run deploy:check && node test/release-runtime.mjs",
@@ -33,7 +33,9 @@
     "test:interop:browser": "node test/identity-interop-browser.mjs",
     "test:customer:browser": "node test/customer-editor-browser.mjs",
     "test:customer": "node --test test/customer-editor.test.mjs",
-    "dev:customer": "node scripts/customer-preview.mjs"
+    "dev:customer": "node scripts/customer-preview.mjs",
+    "test:publishing:permissions": "node --test test/customer-publishing.test.mjs",
+    "test:publishing:browser": "node test/customer-publishing-browser.mjs"
   },
   "dependencies": {
     "linkedom": "^0.18.12"

@@ -420,7 +420,7 @@ function confirmation(title, message, accept = "تأیید", danger = false) {
   });
 }
 async function publish() {
-  if (state.session.user.role !== "admin")
+  if (!state.session.permissions?.publish)
     throw new Error(
       "برای انتشار، پیش‌نویس را دانلود و به مدیر بدهید. دسترسی شما ویرایشگر است.",
     );

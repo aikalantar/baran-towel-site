@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import assert from 'node:assert/strict';
 import {startLocal} from '../scripts/cms-local.mjs';
-const out=path.resolve('.cms-local/task18-qa');await fs.mkdir(out,{recursive:true});
+const out=path.resolve(process.env.CMS_QA_DIR||'.cms-local/task18-qa');await fs.mkdir(out,{recursive:true});
 const originals=new Map();for(const p of ['public/index.html','public/en/index.html','public/catalog/index.html','public/en/catalog/index.html','public/bridal-towels/index.html','public/blog/index.html','public/en/blog/index.html','public/blog/rahnamaye-kharid-hole-luxury/index.html','public/en/blog/how-to-choose-luxury-towels/index.html'])originals.set(p,await fs.readFile(p));
 const results=[],errors=[],counts=[];
 for(const [engine,name,options]of [[chromium,'desktop',{viewport:{width:1440,height:1000}}],[webkit,'iphone',devices['iPhone 13']]]){

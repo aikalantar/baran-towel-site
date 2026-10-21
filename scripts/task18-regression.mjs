@@ -7,8 +7,9 @@ import {spawn} from 'node:child_process';
 const root=await fs.mkdtemp(path.join(os.tmpdir(),'cms-task18-regression-'));
 const suites=process.argv.slice(2).length?process.argv.slice(2):['builder-browser','freeform-browser','direct-edit-browser','task6-blocks-browser','migration-browser','identity-interop-browser','stabilization-browser'];
 const results=[];
-const report=process.argv.slice(2).length?`.cms-local/task18-qa/${suites.join('-')}-regression.json`:'.cms-local/task18-qa/regression.json';
-await fs.mkdir('.cms-local/task18-qa',{recursive:true});
+const qa=process.env.CMS_QA_DIR||'.cms-local/task18-qa',label=process.env.CMS_QA_LABEL||(suites.length===1?suites[0]:'selected');
+const report=process.argv.slice(2).length?`${qa}/${label}-regression.json`:`${qa}/regression.json`;
+await fs.mkdir(qa,{recursive:true});
 for(const suite of suites){
  const dir=path.join(root,suite);await fs.mkdir(dir,{recursive:true});
  const source=await fs.readFile(`test/${suite}.mjs`,'utf8'),temp=`test/.task18-${suite}.mjs`;

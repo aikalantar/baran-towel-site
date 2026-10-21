@@ -50,7 +50,7 @@ export function installCustomerEditor(ctx){
     const session=ctx.getSession();$('#studio-link').hidden=!session?.permissions?.studio;
     $('#customer-publish-help').hidden=!session?.user||!!session.permissions?.publish;
     $('[data-task="publish"]').disabled=!session?.permissions?.publish;
-    $('#publish').title=session?.permissions?.publish?'انتشار تغییرات همین صفحه':'انتشار فقط برای مدیر سایت مجاز است';
+    $('#publish').title=session?.permissions?.publish?'انتشار تغییرات همین صفحه':'انتشار خارج از محدودهٔ دسترسی این حساب است';
     const selected=ctx.getElement(ctx.getSelected()[0]);if(selected?.type==='image'&&$('#selected-image-preview').getAttribute('src')!==selected.content.src)$('#selected-image-preview').src=selected.content.src;
     $('#studio-link').href='/admin/builder/?path='+encodeURIComponent(ctx.getPath());
     if(ctx.isReadOnly())sheet.hidden=true;
