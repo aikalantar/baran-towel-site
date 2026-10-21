@@ -1,11 +1,12 @@
 import {FONT_IDS} from './fonts.js';
+import {isNodeID} from './identity.js';
 export const SCHEMA_VERSION = 2;
 export const HISTORY_LIMIT = 120;
 export const DEVICES = ["desktop", "tablet", "mobile"];
 export const clone = value => JSON.parse(JSON.stringify(value));
 export const emptyLayout = () => ({ desktop: {}, tablet: {}, mobile: {} });
 const record = value => !!value && typeof value === "object" && !Array.isArray(value);
-const idOK = value => typeof value === "string" && /^(?:base-[a-z0-9]+|new-[a-zA-Z0-9-]+|section-[a-zA-Z0-9_-]+)$/.test(value);
+const idOK = isNodeID;
 export function stablePageID(path) { let hash=2166136261; for(const c of path) hash=Math.imul(hash^c.charCodeAt(0),16777619);return `page-${(hash>>>0).toString(36).padStart(8,"0")}`; }
 export function safeLink(value) { return typeof value === "string" && value.length <= 2000 && !/[\u0000-\u0020\\]/.test(value) && /^(?:\/(?!\/)|#|https?:\/\/|mailto:|tel:)/i.test(value); }
 export function safeImage(value) { return typeof value === "string" && value.length < 3_000_000 && ((/^\/assets(?:-v[23])?\/[a-zA-Z0-9_./-]+\.(webp|png|jpe?g)$/i.test(value) && !value.includes("..")) || /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value)); }

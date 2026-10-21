@@ -1,5 +1,6 @@
 // Composable, data-only block definitions shared by the editor and publisher.
 // Every rendered string is text or a validated attribute; user HTML is never parsed.
+import {newElementID} from './identity.js';
 export const BLOCK_KINDS = Object.freeze(["section", "container", "columns", "hero", "cards", "gallery", "faq", "faq-item", "feature", "testimonial", "cta", "group", "card"]);
 export const BLOCK_TYPES = Object.freeze(["text", "heading", "image", "button", "container", "divider", "spacer"]);
 export const BLOCKS = Object.freeze([
@@ -33,7 +34,7 @@ export function blockTag(element) {
 }
 
 /** Returns a flat subtree. The first item is the root; child order is local to its parent. */
-export function createBlock(kind, { anchor, parentId = anchor, language = "fa", idFactory = () => `new-${crypto.randomUUID()}` } = {}) {
+export function createBlock(kind, { anchor, parentId = anchor, language = "fa", idFactory = newElementID } = {}) {
   if (!BLOCKS.some(block => block.id === kind)) throw new Error("نوع بلوک پشتیبانی نمی‌شود.");
   if (typeof anchor !== "string" || !anchor || typeof parentId !== "string" || !parentId) throw new Error("والد بلوک مشخص نیست.");
   const fa = language !== "en", nodes = [], choose = (persian, english) => fa ? persian : english;

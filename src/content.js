@@ -1,4 +1,6 @@
 import { parseHTML } from "linkedom";
+import {legacyIdentityMutation} from './html-identity.js';
+import {stablePageID} from '../public/admin/builder/schema.js';
 
 export const SITE = "https://luxtowelco.com";
 export class CMSFailure extends Error {
@@ -230,7 +232,7 @@ function setSEO(document, kind, value) {
         : el.setAttribute("content", value);
   }
 }
-function changeImage(document, el, update) {
+function changeImage(document, el, update, syncPage = true) {
   const old = el.getAttribute("src");
   const src = safeURL(update.value, true);
   el.setAttribute("src", src);
@@ -256,6 +258,7 @@ function changeImage(document, el, update) {
   el.removeAttribute("sizes");
   for (const source of el.closest("picture")?.querySelectorAll("source") || [])
     source.remove();
+  if(!syncPage)return;
   for (const preload of document.querySelectorAll(
     'link[rel="preload"][as="image"]',
   )) {
@@ -288,10 +291,11 @@ function changeImage(document, el, update) {
 function syncModels(document) {
   const models = modelList(document);
   const index = document.querySelector(".model-index");
-  if (index)
-    index.innerHTML = models
-      .map((m) => `<a href="#${esc(m.id)}">${esc(m.name)}</a>`)
-      .join("");
+  if (index) {
+    const previous=new Map([...index.querySelectorAll('a[href]')].map(a=>[a.getAttribute('href'),a]));
+    const links=models.map(m=>{const link=previous.get('#'+m.id)||document.createElement('a');link.setAttribute('href','#'+m.id);link.textContent=m.name;return link;});
+    index.replaceChildren(...links);
+  }
   for (const script of document.querySelectorAll(
     'script[type="application/ld+json"]',
   )) {
@@ -319,6 +323,7 @@ export function applyChanges(html, updates = [], operations = []) {
   )
     throw new CMSFailure("حجم تغییرات مجاز نیست.");
   const { document } = parseHTML(html);
+  const identity=legacyIdentityMutation(document);
   const known = new Map(collect(document).map((f) => [f.id, f]));
   const modelLocators = new Map(
     [...document.querySelectorAll(".product-card[id]")].map((model) => [
@@ -373,7 +378,7 @@ export function applyChanges(html, updates = [], operations = []) {
       )
         throw new CMSFailure("شناسه مدل جدید باید یکتا و انگلیسی باشد.");
       const copy = model.cloneNode(true);
-      copy.id = op.newId;
+      identity.duplicate(model,copy,op.newId);
       if (op.updates && (!Array.isArray(op.updates) || op.updates.length > 250))
         throw new CMSFailure("اطلاعات مدل تازه معتبر نیست.");
       const prefix = modelLocators.get(op.id) + " > ";
@@ -395,24 +400,7 @@ export function applyChanges(html, updates = [], operations = []) {
       }
       if (op.image) {
         const image = copy.querySelector("img");
-        const src = safeURL(op.image.value, true);
-        const width = Number(op.image.width),
-          height = Number(op.image.height);
-        if (
-          !Number.isInteger(width) ||
-          !Number.isInteger(height) ||
-          width < 1 ||
-          height < 1 ||
-          width > 8000 ||
-          height > 8000
-        )
-          throw new CMSFailure("ابعاد تصویر مدل تازه معتبر نیست.");
-        image.setAttribute("src", src);
-        image.setAttribute("alt", limit(op.image.alt || op.name, 500));
-        image.setAttribute("width", width);
-        image.setAttribute("height", height);
-        image.removeAttribute("srcset");
-        image.removeAttribute("sizes");
+        changeImage(document,image,{...op.image,alt:op.image.alt||op.name},false);
       }
       copy.querySelector("h2").textContent = limit(op.name, 150);
       for (const link of copy.querySelectorAll("[data-product-name]")) {
@@ -435,6 +423,7 @@ export function applyChanges(html, updates = [], operations = []) {
     } else throw new CMSFailure("عملیات مدل معتبر نیست.");
   }
   if (document.querySelector(".product-card")) syncModels(document);
+  identity.finish();
   return document.toString();
 }
 export function preview(html, images = []) {
@@ -462,6 +451,7 @@ export function preview(html, images = []) {
 }
 export function articleHTML(template, article) {
   const { document } = parseHTML(template);
+  const identity=legacyIdentityMutation(document);
   const { slug, locale = "fa" } = article;
   if (
     !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) ||
@@ -526,10 +516,12 @@ export function articleHTML(template, article) {
     publisher: { "@type": "Organization", name: "Baran" },
   }).replace(/</g, "\\u003c");
   document.head.append(schema);
+  identity.finish({pageId:stablePageID(path)});
   return { path, html: document.toString(), route, title, description, image };
 }
 export function addArticleToIndex(html, article) {
   const { document } = parseHTML(html);
+  const identity=legacyIdentityMutation(document);
   const main = document.querySelector("main");
   if (!main?.querySelector(".blog-list"))
     throw new CMSFailure("ساختار فهرست مجله برای مقاله جدید آماده نیست.");
@@ -537,6 +529,7 @@ export function addArticleToIndex(html, article) {
   card.className = "section blog-list reveal";
   card.innerHTML = `<a class="blog-card-image" href="${esc(article.route)}"><img src="${esc(article.image)}" width="900" height="1200" alt="${esc(article.title)}" loading="lazy" decoding="async"></a><article class="blog-card"><h2><a href="${esc(article.route)}">${esc(article.title)}</a></h2><p>${esc(article.description)}</p><a class="button-link" href="${esc(article.route)}">${article.route.startsWith("/en/") ? "Read article" : "مطالعه مقاله"}</a></article>`;
   main.querySelector(".blog-list").before(card);
+  identity.finish();
   return document.toString();
 }
 
@@ -582,6 +575,7 @@ export function applyContacts(html, values) {
   }
   const { document } = parseHTML(html);
   const before = readContacts(html);
+  const identity=legacyIdentityMutation(document);
   for (const a of document.querySelectorAll("a[href]")) {
     const href = a.getAttribute("href");
     if (href.startsWith("tel:")) a.setAttribute("href", "tel:" + values.phone);
@@ -616,5 +610,6 @@ export function applyContacts(html, values) {
       before[key].split("?")[0],
       values[key].split("?")[0],
     );
+  identity.finish();
   return document.toString();
 }
