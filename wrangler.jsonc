@@ -10,7 +10,7 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/cms/*"],
+    "run_worker_first": ["/api/cms/*", "/admin/builder", "/admin/builder/", "/admin/builder/index.html"],
   },
   "vars": {
     "CMS_REPOSITORY": "aikalantar/baran-towel-site",

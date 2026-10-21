@@ -73,6 +73,8 @@ async function signingKey(env) {
   );
 }
 const cookieName = "__Host-luxcms";
+// Bind even deliberately shared signing secrets/accounts to one installation.
+const audience = (request,env) => digest(JSON.stringify([new URL(request.url).origin,env.CMS_SITE_ID||'https://luxtowelco.com',env.CMS_REPOSITORY||'',env.CMS_BRANCH||'main']));
 export async function session(request, env) {
   if (!configured(env)) return null;
   try {
@@ -97,7 +99,7 @@ export async function session(request, env) {
     const user = users(env).find((u) => u.username === claims.u);
     if (
       !user ||
-      claims.exp < Date.now() ||
+      claims.exp < Date.now() || claims.a !== await audience(request,env) ||
       claims.v !== (await digest(user.hash + user.role))
     )
       return null;
@@ -142,6 +144,7 @@ export async function login(request, env, body) {
     encoder.encode(
       JSON.stringify({
         u: user.username,
+        a: await audience(request,env),
         exp: Date.now() + 8 * 60 * 60 * 1000,
         v: await digest(user.hash + user.role),
       }),

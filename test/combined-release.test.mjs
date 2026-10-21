@@ -1,0 +1,22 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+const exec=promisify(execFile);
+test('Task18 combined preparation allows explicitly authorized server changes and never authorizes customer page changes',async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'cms-release-policy-'));await fs.mkdir(path.join(root,'scripts'));await fs.mkdir(path.join(root,'src'));await fs.mkdir(path.join(root,'public'));
+ for(const file of ['prepare-release.mjs','local-secrets.mjs','audit-redact.mjs'])await fs.copyFile('scripts/'+file,path.join(root,'scripts',file));
+ for(const file of ['src/auth.js','src/content.js','public/index.html'])await fs.writeFile(path.join(root,file),'original');
+ for(const args of [['init','-q'],['config','user.name','Release Fixture'],['config','user.email','fixture@example.invalid'],['add','.'],['commit','-qm','baseline'],['switch','-c','codex/combined-fixture']])await exec('git',args,{cwd:root});
+ const baseline=(await exec('git',['rev-parse','HEAD'],{cwd:root})).stdout.trim(),manifest={schemaVersion:2,branch:'codex/combined-fixture',baseline,files:['release-candidate.json','src/auth.js','src/content.js'],authorizedServerChanges:['src/auth.js','src/content.js']};
+ await fs.writeFile(path.join(root,'src/auth.js'),'authorized session fix');await fs.writeFile(path.join(root,'src/content.js'),'authorized validation fix');
+ const run=async value=>{await fs.writeFile(path.join(root,'release-candidate.json'),JSON.stringify(value));return exec(process.execPath,['scripts/prepare-release.mjs'],{cwd:root});};
+ assert.match((await run(manifest)).stdout,/"secretsExcluded":true/);
+ await assert.rejects(()=>run({...manifest,authorizedServerChanges:[]}),/unauthorized CMS\/auth/);
+ await assert.rejects(()=>run({...manifest,files:[...manifest.files,'public/index.html'],authorizedServerChanges:['public/index.html']}),/Invalid authorized server change list/);
+ await fs.writeFile(path.join(root,'public/index.html'),'forged customer content');await assert.rejects(()=>run(manifest),/protected page/);
+ assert.equal((await exec('git',['diff','--cached','--name-only'],{cwd:root})).stdout.trim(),'');
+});

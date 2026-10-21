@@ -118,7 +118,7 @@ test("large existing GitHub assets use the blob API when contents omits base64",
   assert.equal(calls.length,2); assert.ok(calls[1].startsWith("git/blobs/"));
 });
 
-test("editor and anonymous publishing are rejected; CSRF is checked before writes", async () => {
+test("editor content publishing succeeds; anonymous and CSRF requests are rejected", async () => {
   const {repo,state} = await githubSimulation(), page = await pageFor(repo);
   const account = {username:"fixture-editor",role:"editor",salt:bytes64(crypto.getRandomValues(new Uint8Array(24)))};
   account.hash = await passwordHash("fixture-only-password",account.salt);
@@ -126,9 +126,9 @@ test("editor and anonymous publishing are rejected; CSRF is checked before write
   const url = "https://luxtowelco.com/api/cms/builder/publish", cookie = (await login(new Request(url),env,{username:account.username,password:"fixture-only-password"})).split(";")[0];
   const request = (cookie,origin="https://luxtowelco.com") => new Request(url,{method:"POST",headers:{Origin:origin,"X-CMS-Request":"1","Content-Type":"application/json",...(cookie?{Cookie:cookie}:{})},body:JSON.stringify(payload(page.model))});
   assert.equal((await handleCMS(request(),env,{repo})).status,401);
-  assert.equal((await handleCMS(request(cookie),env,{repo})).status,403);
+  assert.equal((await handleCMS(request(cookie),env,{repo})).status,200);
   assert.equal((await handleCMS(request(cookie,"https://bad.invalid"),env,{repo})).status,403);
-  assert.equal(state.commits.length,0);
+  assert.equal(state.commits.length,1);
 });
 
 test("deployment UI evidence is independent of commits and ignores generic checks and preview deploys", async () => {

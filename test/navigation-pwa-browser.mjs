@@ -55,7 +55,7 @@ try {
   const cookie=(await context.cookies()).find(c=>c.name==='__Host-luxcms');assert.ok(cookie?.secure&&cookie.httpOnly&&cookie.sameSite==='Strict');
   ok('Real login restores intended English Builder page and issues unchanged secure HttpOnly session');
   await page.goto(origin+'/admin/');await home();assert.equal(new URL(page.url()).pathname,'/admin/');
-  assert.deepEqual(await page.locator('.nav > *').evaluateAll(items=>items.slice(0,2).map(x=>x.textContent.trim())),['پیشخوان','صفحه‌ساز بصری']);
+  assert.deepEqual(await page.locator('.nav > *').evaluateAll(items=>items.slice(0,2).map(x=>x.textContent.trim())),['پیشخوان','ویرایش سایت']);
   await page.locator('.dashboard-builder').click();await page.locator('#builder:not([hidden])').waitFor();await page.goto(origin+'/admin/');await home();
   ok('Independent dashboard/Builder routes, navigation order and obvious dashboard shortcut work');
   await page.setViewportSize({width:1200,height:460});
@@ -83,7 +83,7 @@ try {
     await page.locator(`.nav [data-nav=${id}][aria-current=page]`).waitFor({state:'attached'});
     await page.waitForFunction(()=>document.activeElement===document.querySelector('#content h1'));
   }
-  await page.locator('#cms-menu-toggle').click();await page.screenshot({path:path.join(folder,'cms-mobile-drawer.png')});await page.locator('.nav a[href="/admin/builder/"]').click();await page.locator('#builder:not([hidden])').waitFor();
+  await page.locator('#cms-menu-toggle').click();await page.screenshot({path:path.join(folder,'cms-mobile-drawer.png')});await page.locator('.nav a[href="/admin/editor/"]').click();await page.locator('#builder:not([hidden])').waitFor();
   ok('Every mobile CMS menu destination and prominent Builder link works using actual navigation');
   await page.goto(origin+'/admin/');await home();await page.locator('#cms-menu-toggle').click();await page.setViewportSize({width:1440,height:950});assert.equal(await page.locator('#content').evaluate(el=>el.inert),false);assert.equal(await page.locator('#cms-sidebar').evaluate(el=>el.inert),false);await page.screenshot({path:path.join(folder,'cms-desktop.png')});
   ok('Resize releases drawer modality and desktop navigation remains operable');

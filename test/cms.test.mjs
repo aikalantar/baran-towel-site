@@ -524,7 +524,7 @@ test("disguised SVG uploads and missing image files are rejected before publicat
   assert.equal(r.status, 400);
   assert.equal(repo.commits.length, 0);
 });
-test("editor accounts can preview but cannot publish", async () => {
+test("editor accounts preview and publish permitted legacy content", async () => {
   const editor = { ...account, role: "editor" };
   const editorEnv = { ...env, CMS_USERS: JSON.stringify([editor]) };
   const c = (
@@ -548,9 +548,9 @@ test("editor accounts can preview but cannot publish", async () => {
   );
   assert.equal(
     (await handleCMS(request("/publish", body, c), editorEnv, { repo })).status,
-    403,
+    200,
   );
-  assert.equal(repo.commits.length, 0);
+  assert.equal(repo.commits.length, 1);
 });
 test("article publication updates the article, journal and sitemap atomically", async () => {
   const repo = new MemoryRepository();

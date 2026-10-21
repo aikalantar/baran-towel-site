@@ -8,6 +8,7 @@ import { digest } from "./auth.js";
 import { prepareImages } from "./builder-images.js";
 import { requiredUnlocks } from "../public/admin/builder/locks.js";
 import {stableElementID,isElementID} from '../public/admin/builder/identity.js';
+import {enforceContentPermission,assertPageAccess,assertPageCreation} from './cms-permissions.js';
 import {publishedIdentity} from './html-identity.js';
 
 // IDs depend on the original DOM location, never on editable text. Drafts are
@@ -148,17 +149,20 @@ function validatePublishedLocks(previous,next,unlockIds) {
 
 export async function publishBuilder(repo, body, user, localMode) {
   const path = pagePath(body?.model?.base?.path);
+  assertPageAccess(user,path);
   if (!/^[a-zA-Z0-9-]{16,80}$/.test(body.requestId || "")) throw new CMSFailure("شناسه درخواست انتشار معتبر نیست.");
   const unlockIds=body.unlockIds??[];
+  if(user.role!=='admin'&&unlockIds.length)throw new CMSFailure('بازکردن قفل فقط برای مدیر مجاز است.',403);
   if(!Array.isArray(unlockIds)||unlockIds.length>2200||unlockIds.some(id=>typeof id!=='string'||!/^[a-zA-Z0-9_-]{1,100}$/.test(id))||new Set(unlockIds).size!==unlockIds.length)throw new CMSFailure('اطلاعات تأیید بازکردن قفل معتبر نیست.');
   const head = await repo.head();
   let file, creating=false;
   try { file=await repo.read(path,head); }
-  catch(error){if(error.status!==404||!body.model.base.creation)throw error;file=await newPageSource(repo,body.model,head);creating=true;}
+  catch(error){if(error.status!==404||!body.model.base.creation)throw error;assertPageCreation(user,path,body.model.base.creation);file=await newPageSource(repo,body.model,head);creating=true;}
   const fingerprint = await digest(JSON.stringify(unlockIds.length?{model:body.model,unlockIds:[...unlockIds].sort()}:body.model));
   // This receipt makes a lost-response retry idempotent without a second commit.
   const receipt = parseHTML(file.content).document;
   if (receipt.querySelector('meta[name="builder-request"]')?.getAttribute("content") === body.requestId) {
+    if(user.role!=='admin'&&receipt.querySelector('meta[name="builder-author"]')?.getAttribute('content')!==await digest(`${user.username}:${user.role}`))throw new CMSFailure('رسید انتشار متعلق به این دسترسی نیست.',403);
     if (receipt.querySelector('meta[name="builder-fingerprint"]')?.getAttribute("content") !== fingerprint) throw new CMSFailure("شناسه درخواست برای محتوای دیگری استفاده شده است.",409);
     return {mode:localMode?"local":"github",sha:head,path,revision:file.sha,replayed:true,publication:{commit:localMode?"local":"committed",deployment:localMode?"not_applicable":"unknown"}};
   }
@@ -174,9 +178,11 @@ export async function publishBuilder(repo, body, user, localMode) {
   if(body.model.base.creation){base.model.base.creation=clone(body.model.base.creation);base.model.page=clone(body.model.base.creation.page);}
   const model=migrateModel(body.model,base.model,base.anchors);
   if (!validModel(model,base.model,base.anchors)) throw new CMSFailure("مدل صفحه، سبک یا ساختار والدها معتبر نیست؛ پیش‌نویس محفوظ است.");
+  const permissionBase=restore?builderPage(file.content,file.sha,path,false):base;
+  enforceContentPermission(user,permissionBase.model,model,permissionBase.document);
   validatePublishedLocks(base.model,model,unlockIds);
   const original = new Map(base.model.elements.map(e => [e.id,e]));
-  for (const e of model.elements) e.imageChanged = e.type === "image" && e.content.src !== original.get(e.id)?.content.src;
+  for (const e of model.elements) e.imageChanged = e.type === "image" && ['src','width','height','variants'].some(key=>JSON.stringify(e.content[key])!==JSON.stringify(original.get(e.id)?.content[key]));
   const tree = await repo.tree(head);
   const available=new Set(tree.map(e=>e.path));
   for(const e of [...model.sections,...model.elements])for(const style of [e.style,...Object.values(e.responsiveStyles||{})])if(style.backgroundImage&&!available.has('public'+style.backgroundImage))throw new CMSFailure('تصویر پس‌زمینه در کتابخانه موجود نیست.');
@@ -224,6 +230,7 @@ export async function publishBuilder(repo, body, user, localMode) {
   if (!document.querySelector('script[src="/builder-layout.js"]')) { const runtime = document.createElement("script"); runtime.src = "/builder-layout.js"; runtime.setAttribute("defer",""); document.head.append(runtime); }
   if(model.elements.some(e=>alive(e)&&e.kind==='gallery')&&!document.querySelector('script[src="/builder-blocks.js"]')){const script=document.createElement('script');script.src='/builder-blocks.js';script.setAttribute('defer','');document.head.append(script);}
   metadata(document,"builder-request",body.requestId); metadata(document,"builder-fingerprint",fingerprint);
+  metadata(document,'builder-author',await digest(`${user.username}:${user.role}`));
   const html = document.toString();
   const managedChanges=await publicationChanges(repo,head,model,html);
   const changes = [{path,content:managedChanges.pageHTML||html},...imageChanges,...managedChanges];

@@ -119,7 +119,7 @@ export function legacyIdentityMutation(document) {
       // Preserve the exact existing CSS; add rules only for intentional clones.
       style.textContent+=layoutCSS(clones).replace(BLOCK_CSS,'');
     }
-    for(const node of document.querySelectorAll('meta[name="builder-request"],meta[name="builder-fingerprint"]'))node.remove();
+    for(const node of document.querySelectorAll('meta[name="builder-request"],meta[name="builder-fingerprint"],meta[name="builder-author"]'))node.remove();
     publishedIdentity(document);
   }
   return {duplicate,finish};

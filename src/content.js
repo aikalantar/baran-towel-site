@@ -554,6 +554,7 @@ export function readContacts(html) {
   };
 }
 export function applyContacts(html, values) {
+  if(!values||typeof values!=='object'||Array.isArray(values))throw new CMSFailure('اطلاعات تماس معتبر نیست.');
   if (
     !/^\+[0-9]{8,15}$/.test(values.phone) ||
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)

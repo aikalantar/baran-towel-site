@@ -5,7 +5,7 @@ import {BLOCKS} from './blocks.js';
 export function installCanvasInput(ctx){
   const frame=document.querySelector('#page'),wrap=document.querySelector('#frame-wrap');
   const plane=document.createElement('div');plane.className='canvas-hit-plane';plane.tabIndex=0;
-  plane.setAttribute('role','region');plane.setAttribute('aria-label','بوم ویرایش؛ لمس برای انتخاب، کشیدن برای پیمایش. جابه‌جایی با دستگیره. انتخاب با صفحه‌کلید از فهرست عناصر.');wrap.append(plane);
+  plane.setAttribute('role','region');plane.setAttribute('aria-label',document.body.dataset.experience==='customer'?'سایت شما؛ لمس برای انتخاب و کشیدن برای پیمایش. انتخاب با صفحه‌کلید از منوی ویرایش سایت در دسترس است.':'بوم ویرایش؛ لمس برای انتخاب، کشیدن برای پیمایش. جابه‌جایی با دستگیره. انتخاب با صفحه‌کلید از فهرست عناصر.');wrap.append(plane);
   const webkit=/AppleWebKit/.test(navigator.userAgent)&&!/(Chrome|Chromium|Edg)\//.test(navigator.userAgent)||/iP(ad|hone|od)/.test(navigator.userAgent);
   let active=null,releaseClick=null;
   document.addEventListener('pointerdown',()=>{releaseClick=null;},true);

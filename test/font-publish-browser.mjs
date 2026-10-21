@@ -2,7 +2,7 @@ import {chromium,webkit} from '@playwright/test';
 import fs from 'node:fs/promises';import path from 'node:path';import assert from 'node:assert/strict';
 import {startLocal} from '../scripts/cms-local.mjs';
 import {FONT_CATALOG} from '../public/admin/builder/fonts.js';
-const dir=path.resolve('.cms-local/task14-qa'),root=await fs.mkdtemp(path.join(dir,'font-site-'));await fs.cp('public',path.join(root,'public'),{recursive:true});
+const dir=path.resolve('.cms-local/task14-qa');await fs.mkdir(dir,{recursive:true});const root=await fs.mkdtemp(path.join(dir,'font-site-'));await fs.cp('public',path.join(root,'public'),{recursive:true});
 const walk=async d=>(await Promise.all((await fs.readdir(d,{withFileTypes:true})).map(e=>e.isDirectory()?walk(path.join(d,e.name)):path.join(d,e.name)))).flat();
 const pages=(await walk('public')).filter(p=>p.endsWith('index.html')&&!p.startsWith(path.join('public','admin'))),before=new Map(await Promise.all(pages.map(async p=>[p,await fs.readFile(p)])));
 const server=await startLocal(root,0),origin=`http://127.0.0.1:${server.address().port}`,browser=await chromium.launch({channel:'chrome'}),page=await browser.newPage({viewport:{width:1700,height:1100}}),results=[],errors=[];page.setDefaultTimeout(20000);page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());

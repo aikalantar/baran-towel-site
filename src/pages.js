@@ -164,7 +164,7 @@ function trustedSource(content, creation) {
   const {document} = parseHTML(content), main = document.querySelector("main");
   if (!main) throw new CMSFailure("پوسته انتخابی بخش اصلی سازگار ندارد.");
   const sourceIDs = new Set([...document.querySelectorAll('[id]')].map(node=>node.id));
-  for (const node of document.querySelectorAll('meta[name="builder-request"],meta[name="builder-fingerprint"],meta[name="builder-page-id"],link[rel="alternate"],script[type="application/ld+json"]')) node.remove();
+  for (const node of document.querySelectorAll('meta[name="builder-request"],meta[name="builder-fingerprint"],meta[name="builder-author"],meta[name="builder-page-id"],link[rel="alternate"],script[type="application/ld+json"]')) node.remove();
   if (creation.kind !== "duplicate") {
     for (const node of document.querySelectorAll('#builder-state,#builder-layout,link[rel="preload"][as="image"]')) node.remove();
     for (const node of document.querySelectorAll("[data-builder-id],[data-builder-anchor],[data-builder-unit],[data-builder-geometry],[data-builder-created]")) for (const attribute of [...node.attributes]) if (attribute.name.startsWith("data-builder-")) node.removeAttribute(attribute.name);

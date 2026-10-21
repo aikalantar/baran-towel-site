@@ -186,7 +186,7 @@ test("GitHub deletion writes a null tree entry without a blob and uses a non-for
   assert.equal(calls.at(-1).body.force,false);
 });
 
-test("anonymous/editor page mutations and cross-origin requests are denied; editors can safely prepare drafts",async t=>{
+test("anonymous, technical page mutations and cross-origin requests are denied; editors prepare drafts",async t=>{
   const {repo}=await fixture(t),account={username:"fixture-editor",role:"editor",salt:bytes64(crypto.getRandomValues(new Uint8Array(24)))};
   account.hash=await passwordHash("fixture-only-password",account.salt);
   const env={CMS_USERS:JSON.stringify([account]),CMS_SESSION_SECRET:"fixture-session-".repeat(5),CMS_GITHUB_TOKEN:"fixture",CMS_GUARD:{idFromName:id=>id,get:()=>({fetch:async()=>new Response(null,{status:204})})}};
@@ -194,7 +194,7 @@ test("anonymous/editor page mutations and cross-origin requests are denied; edit
   const request=(endpoint,body,auth=true,source=origin)=>new Request(origin+"/api/cms/builder/pages"+endpoint,{method:"POST",headers:{Origin:source,"X-CMS-Request":"1","Content-Type":"application/json",...(auth?{Cookie:cookie}:{})},body:JSON.stringify(body)});
   const head=await repo.head();
   assert.equal((await handleCMS(request("/action",{},false),env,{repo})).status,401);
-  assert.equal((await handleCMS(request("/action",{}),env,{repo})).status,403);
+  assert.equal((await handleCMS(request("/action",{path:"public/index.html",action:"slug"}),env,{repo})).status,403);
   assert.equal((await handleCMS(request("/prepare",{slug:"editor-draft"},true,"https://invalid.example"),env,{repo})).status,403);
   const response=await handleCMS(request("/prepare",{slug:"editor-draft"}),env,{repo});assert.equal(response.status,200);const body=await response.json();assert.equal(body.model.base.revision,"new");assert.equal(body.model.page.id,body.model.base.creation.id);
   assert.equal(await repo.head(),head);
