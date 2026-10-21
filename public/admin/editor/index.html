@@ -32,7 +32,21 @@
         <label id="text-group">نوشته<textarea id="text" rows="3" maxlength="12000" dir="auto"></textarea></label>
         <div id="image-group" hidden><img id="selected-image-preview" alt="تصویر انتخاب‌شده"><button id="customer-replace-image">انتخاب تصویر دیگر</button><label class="upload">بارگذاری از دستگاه<input id="upload" type="file" accept="image/png,image/jpeg,image/webp"></label><label>توضیح تصویر<input id="alt" dir="auto" maxlength="2000"></label></div>
         <label id="link-group" hidden>آدرس پیوند<input id="href" dir="ltr" maxlength="2000"></label>
+        <details id="customer-appearance" hidden><summary>قلم، رنگ و اندازه</summary>
+          <div id="customer-text-appearance">
+            <label>قلم نوشته<select id="customer-font-family"><option value="">قلم فعلی سایت</option></select></label>
+            <label>اندازهٔ نوشته<input id="customer-font-size" type="number" min="10" max="96" step="1" placeholder="اندازهٔ فعلی سایت"></label>
+            <label>ضخامت نوشته<select id="customer-font-weight"><option value="">ضخامت فعلی سایت</option><option value="400">معمولی</option><option value="500">متوسط</option><option value="600">نیمه‌ضخیم</option><option value="700">ضخیم</option><option value="800">خیلی ضخیم</option></select></label>
+            <fieldset class="customer-colors"><legend>رنگ نوشته</legend><div id="customer-text-colors" class="customer-color-palette"></div><label>رنگ دلخواه<input id="customer-text-color" type="color" value="#263329"></label></fieldset>
+            <label>چینش نوشته<select id="customer-text-align"><option value="">چینش فعلی سایت</option><option value="start">ابتدای سطر</option><option value="center">وسط</option><option value="end">انتهای سطر</option><option value="justify">هم‌تراز</option></select></label>
+          </div>
+          <fieldset class="customer-colors"><legend>رنگ زمینهٔ همین محتوا</legend><div id="customer-background-colors" class="customer-color-palette"></div><label>رنگ دلخواه<input id="customer-background-color" type="color" value="#ffffff"></label></fieldset>
+          <p id="customer-background-state" class="customer-note"></p>
+          <p class="customer-note">این انتخاب برای همهٔ اندازه‌های صفحه اعمال می‌شود. تغییرات تا زمان انتشار در پیش‌نویس می‌مانند.</p>
+          <button id="customer-appearance-reset">بازگشت به ظاهر پیش‌فرض سایت</button>
+        </details>
       </div>
+      <div class="customer-inline"><button id="customer-add-near" hidden>افزودن محتوا به همین بخش</button><button id="customer-remove" hidden>حذف این محتوا</button></div>
     </section>
   </div>
   <div id="notice" role="alert" hidden></div>

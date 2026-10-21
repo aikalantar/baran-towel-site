@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import {parseHTML} from 'linkedom';
+import {protectedCustomerRegion} from '../public/admin/builder/customer-capabilities.js';
 import {handleCMS} from '../src/cms-worker.js';
 import {login,passwordHash,bytes64} from '../src/auth.js';
 import {githubSimulation} from './github-simulation.mjs';
@@ -15,6 +16,7 @@ const auth=(async()=>{const accounts=[];for(const role of ['admin','editor']){co
 const request=(endpoint,cookie,body,headers={},host=origin)=>new Request(host+'/api/cms'+endpoint,{method:body===undefined?'GET':'POST',headers:{Origin:host,'X-CMS-Request':'1','Content-Type':'application/json',...(cookie?{Cookie:cookie}:{}),...headers},...(body!==undefined?{body:JSON.stringify(body)}:{})});
 async function api(repo,endpoint,body,role='editor',overrides={},headers={}){const {env,cookies}=await auth;const r=await handleCMS(request(endpoint,cookies[role],body,headers),{...env,...overrides},{repo});return {status:r.status,data:await r.json()};}
 const page=async(repo,path='public/index.html')=>{const f=await repo.read(path);return builderPage(f.content,f.sha,path);};
+const editableImage=model=>model.elements.find(e=>e.type==='image'&&!protectedCustomerRegion(model,e.id));
 const payload=model=>({model:structuredClone(model),requestId:crypto.randomUUID()});
 const snapshot=state=>({head:state.head,files:[...state.files]});
 const unchanged=(state,before)=>{assert.equal(state.head,before.head);assert.deepEqual([...state.files],before.files);};
@@ -22,12 +24,12 @@ const post=async(repo,endpoint,body,status=200,options={})=>{const r=await api(r
 
 test('Task18.5 real editor publishes text, uploaded image, product content and safe retry; no credentials in session',async()=>{
  const {repo,state}=await githubSimulation(),p=await page(repo);p.model.elements.find(e=>e.tag==='h1').content.text='Customer independently published';
- const bytes=await fs.readFile('public/assets/products/mozhan.webp'),info=imageInfo(bytes),image=p.model.elements.find(e=>e.type==='image');image.content={src:'data:image/webp;base64,'+bytes.toString('base64'),alt:'Customer photo',width:info.width,height:info.height};
+ const bytes=await fs.readFile('public/assets/products/mozhan.webp'),info=imageInfo(bytes),image=editableImage(p.model);image.content={src:'data:image/webp;base64,'+bytes.toString('base64'),alt:'Customer photo',width:info.width,height:info.height};
  const body=payload(p.model);await post(repo,'/builder/publish',body);const commits=state.commits.length;assert.ok(state.files.get('public/index.html').toString().includes('Customer independently published'));
  const replay=await post(repo,'/builder/publish',body);assert.equal(replay.replayed,true);assert.equal(state.commits.length,commits);
- const catalog=await page(repo,'public/catalog/index.html'),title=catalog.model.elements.find(e=>e.tag==='h2');title.content.text='Customer product';catalog.model.elements.find(e=>e.type==='image').content.src='/assets/products/teyho.webp';await post(repo,'/builder/publish',payload(catalog.model));
+ const catalog=await page(repo,'public/catalog/index.html'),title=catalog.model.elements.find(e=>e.tag==='h2');title.content.text='Customer product';editableImage(catalog.model).content.src='/assets/products/teyho.webp';await post(repo,'/builder/publish',payload(catalog.model));
  assert.ok(state.files.get('public/catalog/index.html').toString().includes('Customer product'));
- const metadata=await page(repo,'public/catalog/index.html'),target=metadata.model.elements.find(e=>e.type==='image'),intrinsic=imageInfo(await repo.readBytes('public'+target.content.src,await repo.head()));target.content.width=1;target.content.height=8000;await post(repo,'/builder/publish',payload(metadata.model));const normalized=JSON.parse(parseHTML((await repo.read('public/catalog/index.html')).content).document.querySelector('#builder-state').textContent).elements.find(e=>e.id===target.id);assert.equal(normalized.content.width,intrinsic.width);assert.equal(normalized.content.height,intrinsic.height);
+ const metadata=await page(repo,'public/catalog/index.html'),target=editableImage(metadata.model),intrinsic=imageInfo(await repo.readBytes('public'+target.content.src,await repo.head()));target.content.width=1;target.content.height=8000;await post(repo,'/builder/publish',payload(metadata.model));const normalized=JSON.parse(parseHTML((await repo.read('public/catalog/index.html')).content).document.querySelector('#builder-state').textContent).elements.find(e=>e.id===target.id);assert.equal(normalized.content.width,intrinsic.width);assert.equal(normalized.content.height,intrinsic.height);
  const session=await api(repo,'/session');assert.equal(session.data.permissions.publish,true);assert.equal(session.data.permissions.studio,false);assert.ok(!JSON.stringify(session.data).includes('CMS_GITHUB_TOKEN'));assert.ok(!JSON.stringify(session.data).includes('fixture-only'));
 });
 test('Task18.5 editor creates, renames, archives, restores and deletes only authorized managed pages',async()=>{
@@ -57,14 +59,15 @@ test('Task18.5 legacy product operations preserve Task17 identities; legacy styl
  await post(repo,'/publish',await bodyFor([{type:'duplicate',id:'sanam',newId:'customer-copy',name:'Customer duplicate'}]));let reopened=await page(repo,'public/catalog/index.html');assert.equal(new Set(reopened.model.elements.map(e=>e.id)).size,reopened.model.elements.length);assert.ok(reopened.html.includes('Customer duplicate'));
  await post(repo,'/publish',await bodyFor([{type:'up',id:'customer-copy'}]));await post(repo,'/publish',await bodyFor([{type:'remove',id:'customer-copy'}]));assert.ok(!(await page(repo,'public/catalog/index.html')).html.includes('id="customer-copy"'));
  const before=snapshot(state);await post(repo,'/publish',await bodyFor([{type:'style',id:'sanam',style:{color:'#123456'}}]),403);unchanged(state,before);
- const file=await repo.read('public/catalog/index.html'),field=describePage(file.content,'public/catalog/index.html',file.sha).fields.find(e=>e.kind==='image');await post(repo,'/publish',{path:'public/catalog/index.html',revision:file.sha,updates:[{id:field.id,value:'/assets/products/teyho.webp',width:1,height:8000}]},403);unchanged(state,before);
+ const shell=await repo.read('public/catalog/index.html'),logo=describePage(shell.content,'public/catalog/index.html',shell.sha).fields.find(e=>e.kind==='image');await post(repo,'/publish',{path:'public/catalog/index.html',revision:shell.sha,updates:[{id:logo.id,value:logo.value,alt:'Forbidden shell change'}],operations:[{type:'up',id:'sanam'}]},403);unchanged(state,before);
+ const file=await repo.read('public/catalog/index.html'),field=describePage(file.content,'public/catalog/index.html',file.sha).fields.find(e=>e.kind==='image'&&e.model);await post(repo,'/publish',{path:'public/catalog/index.html',revision:file.sha,updates:[{id:field.id,value:'/assets/products/teyho.webp',width:1,height:8000}]},403);unchanged(state,before);
 });
 test('Task18.5 genuine editor publishes global contacts, respects CAS and can publish a safe content rollback',async()=>{
  const {repo,state}=await githubSimulation(),initial=await repo.head(),values=readContacts((await repo.read('public/index.html')).content);values.email='owner-published@example.test';await post(repo,'/contacts',{head:initial,values});const before=snapshot(state);await post(repo,'/contacts',{head:initial,values},409);unchanged(state,before);
  for(const path of [...state.files.keys()].filter(p=>/^public\/(?:[a-z0-9-]+\/)*index\.html$/.test(p)&&!p.startsWith('public/admin/'))){assert.ok(state.files.get(path).toString().includes(values.email));await page(repo,path);}
  let p=await page(repo),old=p.model.elements.find(e=>e.tag==='h1').content.text;const priorHead=state.head;p.model.elements.find(e=>e.tag==='h1').content.text='Temporary customer content';await post(repo,'/builder/publish',payload(p.model));
  const historic=await api(repo,'/builder?path=public%2Findex.html&ref='+priorHead);assert.equal(historic.status,200);await post(repo,'/builder/publish',payload(historic.data.model));assert.equal((await page(repo)).model.elements.find(e=>e.tag==='h1').content.text,old);
- const latest=await page(repo);latest.model.elements.find(e=>e.tag==='h1').style.fontSize=44;await publishBuilder(repo,payload(latest.model),admin,false);const snapshotBefore=snapshot(state),unsafe=await api(repo,'/builder?path=public%2Findex.html&ref='+priorHead);await post(repo,'/builder/publish',payload(unsafe.data.model),403);unchanged(state,snapshotBefore);
+ const latest=await page(repo);latest.model.elements.find(e=>e.tag==='h1').style.padding=44;await publishBuilder(repo,payload(latest.model),admin,false);const snapshotBefore=snapshot(state),unsafe=await api(repo,'/builder?path=public%2Findex.html&ref='+priorHead);await post(repo,'/builder/publish',payload(unsafe.data.model),403);unchanged(state,snapshotBefore);
  const legacy=await api(repo,'/publish',{path:'public/index.html',revision:(await repo.read('public/index.html')).sha,restoreCommit:priorHead});assert.equal(legacy.status,403);unchanged(state,snapshotBefore);
 });
 test('Task18.5 server policy scopes reads, content writes, creation, contacts and derived page side effects',async()=>{

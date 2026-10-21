@@ -1,5 +1,6 @@
 import {CMSFailure,pagePath,SITE,routeFor} from './content.js';
 import {lockedBy} from '../public/admin/builder/locks.js';
+import {CUSTOMER_STYLE_KEYS,customerSame,customerCanStyle,customerCanAdd,customerSimpleLeaf,customerCanRemove,customerStyleValue,protectedCustomerRegion} from '../public/admin/builder/customer-capabilities.js';
 
 const deny=message=>{throw new CMSFailure(message,403);};
 const plain=x=>!!x&&typeof x==='object'&&!Array.isArray(x);
@@ -62,22 +63,41 @@ export function scopedRepository(repo,user){
 const stable=x=>Array.isArray(x)?x.map(stable):plain(x)?Object.fromEntries(Object.keys(x).sort().map(k=>[k,stable(x[k])])):x;
 const same=(a,b)=>JSON.stringify(stable(a))===JSON.stringify(stable(b));
 const pageContent=['title','description','ogTitle','ogDescription','ogImage'];
-function design(model){
+function design(model,base=model,document){
  const copy=structuredClone(model);delete copy.base.restoreCommit;delete copy.base.title;
  for(const key of pageContent)delete copy.page[key];
  copy.sections=copy.sections.map(({label,content,...s})=>({...s,...(content&&Object.keys(content).some(k=>k!=='text')?{content:Object.fromEntries(Object.entries(content).filter(([k])=>k!=='text'))}:{})}));
- copy.elements=copy.elements.map(({content,imageChanged,...e})=>e);
+ copy.elements=copy.elements.filter(e=>base.elements.some(n=>n.id===e.id)).map(({content,imageChanged,...e})=>{
+  if(customerCanStyle(base,e.id))for(const style of [e.style,...Object.values(e.responsiveStyles||{})])for(const key of CUSTOMER_STYLE_KEYS)delete style[key];
+  if(customerCanRemove(base,e.id,document))delete e.deleted;
+  return e;
+ });
  return copy;
 }
-export function enforceContentPermission(user,base,next){
+export function enforceContentPermission(user,base,next,document){
  if(cmsPermissions(user).studio)return;
  if(!cmsPermissions(user).edit)deny('دسترسی ویرایش ندارید.');
  assertPageAccess(user,next.base.path);
  if(next.base.creation)assertPageCreation(user,next.base.path,next.base.creation);
- if(!same(design(base),design(next)))deny('تغییر طراحی فقط برای مدیر مجاز است.');
+ if(!same(design(base,base,document),design(next,base,document)))deny('تغییر طراحی حرفه‌ای یا بخش محافظت‌شده فقط برای مدیر مجاز است.');
+ const additions=next.elements.filter(e=>!base.elements.some(n=>n.id===e.id));
+ if(additions.length>50)deny('در هر انتشار حداکثر ۵۰ محتوای ساده اضافه کنید.');
+ const orders=new Set();
  for(const e of next.elements){
   const old=base.elements.find(n=>n.id===e.id);
+  if(!old){
+   const minimum=Math.max(-1,...base.elements.filter(n=>n.parentId===e.parentId).map(n=>n.order||0))+1,key=e.parentId+':'+e.order;
+   if(!customerSimpleLeaf(e)||!customerCanAdd(base,e.parentId,document)||!Number.isInteger(e.order)||e.order<minimum||orders.has(key))deny('فقط نوشته، عنوان، تصویر یا دکمهٔ ساده در بخش مجاز قابل افزودن است.');
+   orders.add(key);
+  }
+  for(const device of ['desktop','tablet','mobile']){
+   const before=device==='desktop'?old?.style:old?.responsiveStyles?.[device],after=device==='desktop'?e.style:e.responsiveStyles?.[device];
+   for(const key of new Set([...Object.keys(before||{}),...Object.keys(after||{})]))if(!customerSame(before?.[key],after?.[key])){
+    if(!CUSTOMER_STYLE_KEYS.includes(key)||old&&!customerCanStyle(base,e.id)||!customerStyleValue(key,after?.[key],e.type))deny('این ویژگی ظاهر در محدودهٔ ویرایش ساده نیست.');
+   }
+  }
   if(same(old?.content,e.content))continue;
+  if(old&&protectedCustomerRegion(base,e.id))deny('محتوای پوستهٔ محافظت‌شده فقط برای طراح مجاز است؛ اطلاعات تماس را از بخش تماس تغییر دهید.');
   if(lockedBy(base,e.id))deny('تغییر محتوای بخش قفل‌شده فقط برای مدیر مجاز است.');
   const allowed=e.type==='image'?['src','alt','width','height','variants']:['text','runs','href'];
   const extra=content=>Object.fromEntries(Object.entries(content||{}).filter(([k])=>!allowed.includes(k)));

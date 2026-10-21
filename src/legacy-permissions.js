@@ -9,6 +9,7 @@ export async function authorizeLegacy(user,repo,head,path,current,source,body){
  if(!Array.isArray(body.updates||[])||!Array.isArray(body.operations||[])||(body.updates||[]).length>1500||(body.operations||[]).length>40)throw new CMSFailure('حجم یا نوع تغییرات معتبر نیست.');
  const base=builderPage(current,'permission',path,false),fields=describePage(source,path,'permission').fields;
  const locked=node=>{
+  if(node?.closest('header.site-header,footer'))throw new CMSFailure('ویرایش پوستهٔ محافظت‌شده فقط برای طراح مجاز است؛ از بخش تماس برای اطلاعات تماس استفاده کنید.',403);
   for(const el of [node,...node?.querySelectorAll('[data-builder-id]')||[]]){
    const id=el?.getAttribute('data-builder-id')||el?.getAttribute('data-builder-anchor');
    if(id&&lockedBy(base.model,id))throw new CMSFailure('تغییر محتوای قفل‌شده فقط برای مدیر مجاز است.',403);

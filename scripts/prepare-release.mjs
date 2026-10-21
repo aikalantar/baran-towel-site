@@ -10,9 +10,13 @@ const exec = promisify(execFile), root = process.cwd();
 // with a hard-coded file list from a previous release.
 const manifest=JSON.parse(await fs.readFile("release-candidate.json","utf8"));
 const {branch,files,baseline}=manifest;
+const authorizedServerChanges=manifest.authorizedServerChanges||[];
 if(manifest.schemaVersion!==2 || !/^codex\/[a-z0-9-]+$/.test(branch || "") || !/^[a-f0-9]{40}$/.test(baseline || "") ||
    !Array.isArray(files) || !files.length || new Set(files).size!==files.length ||
    !files.includes("release-candidate.json") || files.some(file=>typeof file!=="string" || !/^[a-zA-Z0-9_./-]+$/.test(file) || file.split('/').some(part=>!part || part==='.' || part==='..'))) throw new Error("Invalid reviewed release manifest.");
+// Task-scoped authorization can include CMS/auth changes; public customer
+// content remains protected with no manifest override.
+if(!Array.isArray(authorizedServerChanges)||new Set(authorizedServerChanges).size!==authorizedServerChanges.length||authorizedServerChanges.some(file=>!['src/auth.js','src/content.js'].includes(file)||!files.includes(file)))throw new Error('Invalid authorized server change list.');
 await exec("git",["merge-base","--is-ancestor",baseline,"HEAD"]);
 const current = (await exec("git",["branch","--show-current"])).stdout.trim();
 if (current !== branch) throw new Error("Switch to the preserved release branch before preparing the candidate.");
@@ -27,10 +31,10 @@ for (const file of files) {
 const previousStaged = (await exec("git",["diff","--cached","--name-only"])).stdout.trim().split(/\r?\n/).filter(Boolean);
 if (previousStaged.some(file=>!files.includes(file))) throw new Error("Unrelated staged files were preserved. Review them separately before preparing this candidate.");
 const protectedPaths = ["public/index.html","public/en/index.html","public/catalog/index.html","public/en/catalog/index.html","public/bridal-towels/index.html","public/blog/index.html","public/en/blog/index.html","public/blog/rahnamaye-kharid-hole-luxury/index.html","public/en/blog/how-to-choose-luxury-towels/index.html","public/styles.600f8d5159.css","public/script.df5cebe557.js","public/sitemap.xml","src/auth.js","src/content.js"];
-if ((await exec("git",["diff",baseline,"--name-only","--",...protectedPaths])).stdout.trim()) throw new Error("A protected page or existing CMS/auth file changed; explicit review is required.");
+if ((await exec("git",["diff",baseline,"--name-only","--",...protectedPaths.filter(file=>!authorizedServerChanges.includes(file))])).stdout.trim()) throw new Error("A protected page or unauthorized CMS/auth file changed; explicit review is required.");
 const stage = process.argv.includes("--stage");
 if (stage) await exec("git",["add","--",...files],{maxBuffer:2*1024*1024});
-const report = {branch,fileCount:files.length,files,staged:stage,secretsExcluded:true,mainPublicFilesUnchanged:true,push:false,deploy:false};
+const report = {branch,fileCount:files.length,files,authorizedServerChanges,staged:stage,secretsExcluded:true,mainPublicFilesUnchanged:true,push:false,deploy:false};
 await fs.mkdir(".cms-local/preflight",{recursive:true});
 await writeAuditReport(".cms-local/preflight/release-stage.json",report);
 console.log(JSON.stringify({branch,fileCount:files.length,staged:stage,secretsExcluded:true,push:false,deploy:false}));

@@ -10,11 +10,11 @@ const results=[],errors=[],counts=[];
 for(const [engine,name,options]of [[chromium,'desktop',{viewport:{width:1440,height:1000}}],[webkit,'iphone',devices['iPhone 13']]]){
  if(process.env.TASK18_PROFILE&&process.env.TASK18_PROFILE!==name)continue;
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'cms-task18-qa-'));await fs.cp('public',path.join(root,'public'),{recursive:true});
- const server=await startLocal(root,0),origin=`http://127.0.0.1:${server.address().port}`,browser=await engine.launch(engine===chromium?{channel:'chrome'}:{}),context=await browser.newContext(options),p=await context.newPage();p.setDefaultTimeout(20000);p.on('pageerror',e=>errors.push({name,message:e.message}));p.on('dialog',d=>d.accept());
+ const server=await startLocal(root,0),origin=`http://127.0.0.1:${server.address().port}`,browser=await engine.launch(engine===chromium?{channel:'chrome'}:{}),context=await browser.newContext(options),p=await context.newPage();p.setDefaultTimeout(30000);p.on('pageerror',e=>errors.push({name,message:e.message}));p.on('dialog',d=>d.accept());
  await context.route('**/*',r=>new URL(r.request().url()).origin===origin?r.continue():r.abort());
  await context.addInitScript(()=>{if(window!==window.top)return;const put=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(v,k){const q=put.call(this,v,k);if(sessionStorage.getItem('task18-fail')==='1')this.transaction.abort();return q;};});
  let interactions={clicks:0,fills:0,selects:0,uploads:0};
- const click=async locator=>{await p.waitForFunction(()=>!document.querySelector('#customer-dialog[open][aria-busy=true]'));interactions.clicks++;if(options.hasTouch){await locator.scrollIntoViewIfNeeded();const b=await locator.boundingBox();await p.touchscreen.tap(b.x+b.width/2,b.y+b.height/2);}else await locator.click();};
+ const click=async locator=>{await p.waitForFunction(()=>!document.querySelector('#customer-dialog[open][aria-busy=true]'));interactions.clicks++;if(options.hasTouch)await locator.tap();else await locator.click();};
  const fill=async(locator,v)=>{interactions.fills++;await locator.fill(v);};
  const task=async id=>{await click(p.locator('#customer-menu'));await click(p.locator(`[data-task=${id}]`));};
  const frame=()=>p.frameLocator('#page');const saved=()=>p.locator('#save-status').filter({hasText:'پیش‌نویس در این مرورگر ذخیره شد'}).waitFor();

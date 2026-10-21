@@ -178,7 +178,8 @@ export async function publishBuilder(repo, body, user, localMode) {
   if(body.model.base.creation){base.model.base.creation=clone(body.model.base.creation);base.model.page=clone(body.model.base.creation.page);}
   const model=migrateModel(body.model,base.model,base.anchors);
   if (!validModel(model,base.model,base.anchors)) throw new CMSFailure("مدل صفحه، سبک یا ساختار والدها معتبر نیست؛ پیش‌نویس محفوظ است.");
-  enforceContentPermission(user,restore?builderPage(file.content,file.sha,path,false).model:base.model,model);
+  const permissionBase=restore?builderPage(file.content,file.sha,path,false):base;
+  enforceContentPermission(user,permissionBase.model,model,permissionBase.document);
   validatePublishedLocks(base.model,model,unlockIds);
   const original = new Map(base.model.elements.map(e => [e.id,e]));
   for (const e of model.elements) e.imageChanged = e.type === "image" && ['src','width','height','variants'].some(key=>JSON.stringify(e.content[key])!==JSON.stringify(original.get(e.id)?.content[key]));
