@@ -93,7 +93,7 @@
     },
     {
       "path": "public/task17-identity-canary-20261021/index.html",
-      "status": "published",
+      "status": "deleted",
       "managed": true,
       "page": {
         "id": "page-038ca8e9-0edc-4220-b3bc-90c004e8fbcd",
@@ -113,8 +113,13 @@
           "order": 0
         }
       },
-      "updated": "2026-10-21T03:23:04.062Z",
-      "menuExplicit": false
+      "updated": "2026-10-21T03:24:58.715Z",
+      "menuExplicit": false,
+      "recovery": {
+        "path": "public/task17-identity-canary-20261021/index.html",
+        "revision": "6c3a02e02352d3379de982fc34d20c629cf29491",
+        "fileSha": "28c8a3c87b6bf1d20a963b3996cbf1c9e380264d"
+      }
     }
   ],
   "requests": [
@@ -146,6 +151,12 @@
       "id": "63e8c625-0bf0-4b0f-ab1c-ffe8dfed79b8",
       "fingerprint": "104501591aca19515353d223d456f880ffbde150e85d95522a571cb4a250d3a1",
       "path": "public/task15-visual-canary-20261020/index.html",
+      "action": "delete"
+    },
+    {
+      "id": "6c61e528-34a4-4977-9aa1-6e3b7edb89ca",
+      "fingerprint": "df259b3e80a96a19ea67c29b989c169968e9200553f99a2dad11938c834b7ccb",
+      "path": "public/task17-identity-canary-20261021/index.html",
       "action": "delete"
     }
   ]
