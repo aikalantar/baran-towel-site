@@ -90,6 +90,31 @@
         "revision": "d49885a383f810bdcfb3d2b0ff1be95833f9eaf9",
         "fileSha": "2d84b2c9a33bbd4003546860938415d9e364194c"
       }
+    },
+    {
+      "path": "public/task17-identity-canary-20261021/index.html",
+      "status": "published",
+      "managed": true,
+      "page": {
+        "id": "page-038ca8e9-0edc-4220-b3bc-90c004e8fbcd",
+        "title": "آزمون موقت هویت CMS",
+        "description": "",
+        "language": "fa",
+        "direction": "rtl",
+        "canonical": "https://luxtowelco.com/task17-identity-canary-20261021/",
+        "robots": "noindex",
+        "visibility": "unlisted",
+        "ogTitle": "آزمون موقت هویت CMS",
+        "ogDescription": "",
+        "ogImage": "",
+        "menu": {
+          "included": false,
+          "label": "آزمون موقت",
+          "order": 0
+        }
+      },
+      "updated": "2026-10-21T03:21:53.434Z",
+      "menuExplicit": false
     }
   ],
   "requests": [
