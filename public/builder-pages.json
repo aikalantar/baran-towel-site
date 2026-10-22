@@ -120,6 +120,31 @@
         "revision": "6c3a02e02352d3379de982fc34d20c629cf29491",
         "fileSha": "28c8a3c87b6bf1d20a963b3996cbf1c9e380264d"
       }
+    },
+    {
+      "path": "public/index.html",
+      "status": "published",
+      "managed": false,
+      "page": {
+        "id": "page-01w2re22",
+        "title": "باران؛ فراتر از حوله | حوله و تن‌پوش لوکس",
+        "description": "باران؛ مجموعه‌ای از حوله‌ها و تن‌پوش‌های لوکس با طراحی دقیق، پنبه طبیعی و دوخت ظریف.",
+        "language": "fa",
+        "direction": "rtl",
+        "canonical": "https://luxtowelco.com/",
+        "robots": "index",
+        "visibility": "public",
+        "ogTitle": "باران؛ فراتر از حوله",
+        "ogDescription": "اصالتی که هر روز لمس می‌شود.",
+        "ogImage": "/assets/images/home/baran-hero.webp",
+        "menu": {
+          "included": true,
+          "label": "خانه",
+          "order": 0
+        }
+      },
+      "updated": "2026-10-22T05:59:17.918Z",
+      "menuExplicit": false
     }
   ],
   "requests": [
