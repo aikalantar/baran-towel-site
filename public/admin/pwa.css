@@ -7,3 +7,5 @@
 #cms-install-dialog button { min-height: 44px; padding: 8px 20px; border: 1px solid #d5dccf; border-radius: 8px; font: inherit; cursor: pointer; }
 #cms-install-dialog p { font-size: 15px; }
 [data-cms-install][hidden] { display: none !important; }
+.cms-install-hint{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid #d5dccf;background:#edf1e9;font-size:12px;flex-shrink:0}.cms-install-hint span{flex:1;min-width:130px}.cms-install-hint button{font:inherit;min-height:44px;padding:6px 8px;border:1px solid #bdc9b8;border-radius:8px;background:white;color:#34452f}.cms-install-hint[hidden]{display:none!important}#cms-install-dialog{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.cms-install-hint.cms-install-compact{padding:0;border:0;flex-shrink:0}.cms-install-compact button{white-space:nowrap}

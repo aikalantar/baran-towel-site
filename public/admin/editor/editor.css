@@ -8,4 +8,7 @@
 
 summary{min-height:44px;padding-block:10px}.status-strip button{min-height:44px}
 html,body{height:100%;overflow:hidden}#builder{position:fixed;inset:0}#gate{max-height:85dvh;overflow:auto}
+html,body,#builder,.workspace,.canvas,#frame-wrap{overscroll-behavior:none}#customer-selection,#customer-tasks,dialog{overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scroll-padding:12px}#customer-selection input,#customer-selection textarea,#customer-selection select,dialog input,dialog textarea,dialog select{font-size:16px}.toolbar{padding-top:max(6px,env(safe-area-inset-top))}.canvas-hit-plane{touch-action:pinch-zoom}#customer-selection .sheet-header{position:sticky;top:-16px;background:white;z-index:2;padding-block:4px}
+#customer-selection{max-height:min(55dvh,calc(100% - 64px))}
+#publication-status[data-state=success],[data-recovered-publication][data-state=success]{background:#e1f1e3;color:#244e30}#publication-status[aria-busy=true]::after{content:' · در حال بررسی…'}
 .customer-colors{min-width:0;margin:12px 0;padding:10px;border:1px solid var(--line);border-radius:10px}.customer-color-palette{display:flex;gap:8px;flex-wrap:wrap}.customer-color-palette button{width:44px;height:44px;padding:0;border:2px solid #b9c5b8}.customer-color-palette button[aria-pressed=true]{outline:3px solid #ac7742;outline-offset:2px}

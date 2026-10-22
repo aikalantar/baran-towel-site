@@ -2,6 +2,7 @@ import { History, clone, emptyLayout, safeLink, safeImage, validModel, decodeDra
 import { isFree } from "./layout.js";
 import { builderLoginURL } from '../routes.js';
 import { mountInstall } from '../pwa.js';
+import {installTouchSafety} from '../touch-safety.js';
 import { optimizeImage } from "./images.js";
 import { BLOCKS, createBlock } from './blocks.js';
 import {renderCanvas,updateGeometry} from './canvas.js';
@@ -10,7 +11,7 @@ import {installPagesUI} from './pages-ui.js';
 import {installCustomerUI} from './customer-ui.js';
 import {lockedBy,allowsLockedChanges,requiredUnlocks} from './locks.js';
 import {createDraftSafety,installDraftRecovery} from '../draft-safety.js';
-import {publicationMessage} from './publication-status.js';
+import {publicationMessage,publicationVerified,customerPublicationMessage} from './publication-status.js';
 import {installCanvasInput} from './canvas-input.js';
 import {installDirectEdit} from './direct-edit.js';
 import {installFontPreview} from './fonts.js';
@@ -18,6 +19,7 @@ import {newElementID} from './identity.js';
 import {installCustomerEditor} from '../editor/customer-editor.js';
 
 const customerExperience = document.body.dataset.experience === 'customer';
+installTouchSafety();
 
 const $ = selector => document.querySelector(selector);
 const frame = $("#page");
@@ -27,6 +29,8 @@ let base, history, library, db, storageKey, user, doc, selected = [], device = "
 let gesture = null, saveTimer, noticeTimer, locked = false, draftWritable = false, saveChain = Promise.resolve(), originals = new Map();
 let sessionInfo, currentPath = "public/index.html", activeRef = "", sessionTimer, publishing = false, publishRequest = null, publication = null;
 let editView=0,frameLoadListener,frameObserver,canvasInput, pendingTouch, customerUI, selectionPending = false,publicationTimer;
+let publicationCheck=null,publicationEpoch=0,publicationMonitorID=0;
+let pageActive=true,sessionUnverified=false;
 const updateHooks=[];
 const notifyControls=()=>{if(history&&doc)for(const fn of updateHooks)fn();};
 const model = () => history.present;
@@ -400,7 +404,12 @@ function bindFrame() {
   doc.addEventListener("keydown", keyboard);
   doc.addEventListener("scroll", drawSelection, true);
   frameObserver?.disconnect();frameObserver=new ResizeObserver(()=>drawSelection());frameObserver.observe(doc.body);
-  frame.contentWindow.addEventListener("resize", () => { render(); properties(); });
+  let frameWidth=frame.contentWindow.innerWidth;
+  frame.contentWindow.addEventListener("resize", () => {
+    const width=frame.contentWindow.innerWidth;
+    if(width!==frameWidth){frameWidth=width;render();properties();}
+    else{updateGeometry(doc);drawSelection();}
+  });
   doc.addEventListener("load", drawSelection, true);
   render(); properties(); updateHistory();
 }
@@ -541,12 +550,23 @@ function lock(message) {
   frame.srcdoc = "";
 }
 async function checkSession() {
-  if (locked) return;
+  if (locked||document.hidden||!pageActive) return;
+  const checkedUser=user;
   try {
     const current = await api("/session");
+    if(!pageActive||checkedUser!==user)return;
     if (current.user?.username !== user || current.user?.role!==sessionInfo.user.role || !["admin", "editor"].includes(current.user?.role)) lock("نشست شما پایان یافته است؛ دوباره از پنل مدیریت وارد شوید. پیش‌نویس ذخیره‌شده حفظ شده است.");
-  } catch { lock("بررسی دسترسی ممکن نشد؛ اتصال را بررسی کرده و صفحه را تازه کنید."); }
+    else{sessionUnverified=false;$('#publish').disabled=publishing||!!publication?.result||!sessionInfo.permissions.publish;}
+  } catch {
+    if(!pageActive||checkedUser!==user)return;
+    sessionUnverified=true;$('#publish').disabled=true;
+    notice('ارتباط برای بررسی دسترسی برقرار نشد؛ صفحه و پیش‌نویس باز می‌مانند. پس از وصل‌شدن اینترنت دوباره بررسی می‌شود.');
+  }
 }
+window.addEventListener('pagehide',()=>{pageActive=false;publicationMonitorID++;clearInterval(sessionTimer);clearTimeout(publicationTimer);});
+window.addEventListener('pageshow',()=>{pageActive=true;if(history&&sessionInfo){clearInterval(sessionTimer);sessionTimer=setInterval(checkSession,45000);void checkSession();}});
+window.addEventListener('online',()=>{if(history&&sessionInfo)void checkSession();});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&history&&sessionInfo)void checkSession();});
 function loadEditingFrame(){
   return new Promise((resolve,reject)=>{
   const view=String(++editView);
@@ -576,6 +596,8 @@ async function loadPage(path, ref = "", fresh = false, prepared = null) {
   if(!next){try{next=await api(`/builder?path=${encodeURIComponent(path)}${ref ? `&ref=${ref}` : ""}`);}catch(error){if(error.status===404&&!ref)next=await dbRecord(`prepared:${user}:${path}`);if(!next){draftWritable=priorDraftWritable;frame.hidden=false;$('.workspace').inert=false;throw error;}}}
   base = next; currentPath = path; activeRef = ref;
   clearTimeout(publicationTimer);
+  publicationEpoch++;publicationMonitorID++;publicationCheck=null;
+  document.querySelectorAll('[data-recovered-publication-control]').forEach(node=>node.remove());
   const address = new URL(location.href); address.searchParams.set("path",path);
   if (ref) address.searchParams.set("ref",ref); else address.searchParams.delete("ref");
   window.history.replaceState(null,"",address);
@@ -583,7 +605,8 @@ async function loadPage(path, ref = "", fresh = false, prepared = null) {
   selected = []; originals.clear(); doc = null; preview = false; publication = null; publishRequest = null;
   document.body.classList.remove("preview"); $("#preview").setAttribute("aria-pressed","false"); $("#preview").textContent = "پیش‌نمایش";
   $("#publication-status").textContent = ""; $("#check-publication").hidden = true; $("#continue-editing").hidden = true;
-  $("#publish").disabled = !sessionInfo.permissions.publish;
+  $('#publication-status').removeAttribute('data-state');$('#publication-status').removeAttribute('aria-busy');
+  $("#publish").disabled = sessionUnverified||!sessionInfo.permissions.publish;
   if(![...$('#page-selector').options].some(o=>o.value===path)){const option=document.createElement('option');option.value=path;option.textContent=`پیش‌نویس · ${path.slice(7)}`;$('#page-selector').append(option);}
   $("#page-selector").value = path;
   $("#page-heading").textContent = `${base.model.base.title}${ref ? " — بازگردانی در پیش‌نویس" : ""}`;
@@ -609,6 +632,12 @@ async function loadPage(path, ref = "", fresh = false, prepared = null) {
       const recovered = prior?.requestId && prior.requestId === base.receipt?.requestId;
       if (recovered) {
         $("#gate-message").textContent = "ثبت درخواست قبلی در نسخه جاری صفحه تأیید شد. پیش‌نویس اصلی و تاریخچه قبلی جایگزین نشده‌اند؛ ابتدا پشتیبان را دانلود کنید. بازکردن نسخه ثبت‌شده پس از آرشیو موفق ممکن است. وضعیت استقرار آنلاین هنوز تأیید نشده است.";
+        if(prior.result?.sha&&prior.result.mode!=='local'){
+          publication=prior;
+          const state=document.createElement('p');state.dataset.recoveredPublication='';state.dataset.recoveredPublicationControl='';state.setAttribute('role','status');
+          const check=document.createElement('button');check.type='button';check.textContent='بررسی انتشار ثبت‌شده';check.dataset.recoveredPublicationControl='';check.onclick=()=>monitorPublication(prior.result.sha);
+          $('#gate').append(state,check);void monitorPublication(prior.result.sha);
+        }
       }
       const backup = document.createElement("button"); backup.textContent = "دانلود پیش‌نویس قبلی"; backup.onclick = () => download(saved, "baran-previous-draft.json");
       const fresh = document.createElement("button"); fresh.textContent = recovered ? "باز کردن نسخه ثبت‌شده" : "شروع پیش‌نویس تازه از صفحه فعلی";
@@ -632,7 +661,7 @@ async function loadPage(path, ref = "", fresh = false, prepared = null) {
 }
 async function boot() {
   $('#builder-login').href = builderLoginURL(location.pathname + location.search);
-  mountInstall(document.querySelector(customerExperience?'#customer-tasks details':'.toolbar .tools:last-child'));
+  mountInstall(document.querySelector(customerExperience?'#customer-tasks':'.toolbar .tools:last-child'),{promotion:customerExperience?document.querySelector('.status-strip'):null});
   sessionInfo = await api("/session");
   if (!sessionInfo.user || !["admin", "editor"].includes(sessionInfo.user.role)) { $("#gate-message").textContent = "برای ویرایش صفحه وارد حساب مدیر یا ویرایشگر شوید؛ پس از ورود به همین صفحه برمی‌گردید."; return; }
   user = sessionInfo.user.username;
@@ -684,12 +713,34 @@ async function status() {
   if (!publication?.result) return;
   if (publication.result.mode === "local") { $("#publication-status").textContent = "در فایل‌های محلی ثبت شد؛ هیچ استقرار آنلاینی انجام نشده است."; return; }
   const sha=publication.result.sha;
-  let result;try{result=await api(`/builder/status?sha=${encodeURIComponent(sha)}`);}catch{result={commit:'committed',deployment:'unknown'};}
-  if(publication?.result.sha!==sha)return;
-  $("#publication-status").textContent=customerExperience ? (result.deployment==='success'&&['cloudflare-active-production-version','github-cloudflare-production-deployment'].includes(result.evidence)?'انتشار آنلاین همین نسخه تأیید شد.': ['failure','error'].includes(result.deployment)?'انتشار آنلاین ناموفق بود؛ تغییرات ثبت‌شده و پیش‌نویس محفوظ‌اند.':'تغییرات ثبت شدند؛ انتشار آنلاین همین نسخه هنوز تأیید نشده است. کمی بعد «بررسی انتشار» را بزنید.') : publicationMessage(result);
+  if(publicationCheck?.sha===sha)return publicationCheck.promise;
+  const epoch=publicationEpoch;
+  const promise=(async()=>{
+  $('#publication-status').setAttribute('aria-busy','true');
+  let result;
+  try{const response=await fetch(`/api/cms/builder/status?sha=${encodeURIComponent(sha)}&path=${encodeURIComponent(currentPath)}`,{credentials:'same-origin',signal:AbortSignal.timeout(45000)});if(!response.ok)throw Error('Status unavailable');result=await response.json();}
+  catch{result={commit:'committed',deployment:'unknown',reason:'check_timeout'};}
+  if(publication?.result.sha!==sha||epoch!==publicationEpoch)return;
+  // Keep earlier evidence as history, never substitute it for a fresh check:
+  // production may have rolled back while the repository HEAD stayed the same.
+  if(publicationVerified(result))publication.lastVerified={sha,result};
+  else if(result.reason==='check_timeout'&&publication.lastVerified?.sha===sha)result={...result,previouslyVerifiedAt:publication.lastVerified.result.checkedAt};
+  publication.status=result;
+  for(const target of document.querySelectorAll('#publication-status,[data-recovered-publication]')){target.textContent=customerExperience?customerPublicationMessage(result):publicationMessage(result);target.dataset.state=publicationVerified(result)?'success':result.deployment||'unknown';}
+  try{await dbRecord(`request:${storageKey}`,publication);}catch{/* Status evidence must not replace the editable draft. */}
   return result;
+  })();
+  publicationCheck={sha,promise};try{return await promise;}finally{if(publicationCheck?.promise===promise){publicationCheck=null;$('#publication-status').removeAttribute('aria-busy');}}
 }
-async function monitorPublication(sha,attempt=0){clearTimeout(publicationTimer);const result=await status();if(publication?.result.sha!==sha||attempt>=5||['success','failure','error','inactive','superseded'].includes(result?.deployment))return;publicationTimer=setTimeout(()=>monitorPublication(sha,attempt+1),10000);}
+async function monitorPublication(sha,started=Date.now(),monitor=++publicationMonitorID){
+  clearTimeout(publicationTimer);if(document.hidden||locked||!pageActive)return;
+  const result=await status();
+  if(monitor!==publicationMonitorID||document.hidden||locked||!pageActive||publication?.result.sha!==sha||publicationVerified(result)||['failure','error','inactive','superseded'].includes(result?.deployment))return;
+  if(Date.now()-started>=10*60*1000){$('#publication-status').textContent+=' بررسی خودکار متوقف شد؛ با «بررسی انتشار» دوباره بررسی کنید. دوباره منتشر نکنید.';return;}
+  publicationTimer=setTimeout(()=>monitorPublication(sha,started,monitor),Date.now()-started<90000?10000:20000);
+}
+function resumePublication(){if(!document.hidden&&publication?.result?.mode!=='local'&&publication?.result?.sha&&!publicationVerified(publication.status))void monitorPublication(publication.result.sha);}
+document.addEventListener('visibilitychange',()=>{publicationMonitorID++;clearTimeout(publicationTimer);resumePublication();});window.addEventListener('pageshow',resumePublication);window.addEventListener('online',resumePublication);
 $("#page-selector").onchange = event => loadPage(event.target.value).catch(error => { $("#page-selector").value = currentPath; notice(error.message); });
 $("#load-revision").onclick = () => loadPage(currentPath,$("#revisions").value).catch(error => notice(error.message));
 $("#load-current").onclick = () => loadPage(currentPath).catch(error => notice(error.message));
@@ -701,9 +752,9 @@ $("#continue-editing").onclick = async () => {
   }catch(error){notice(error.message);$('.workspace').inert=false;}
   finally{$('#continue-editing').disabled=false;}
 };
-$("#check-publication").onclick = async()=>{const button=$("#check-publication");button.disabled=true;try{await status();}finally{button.disabled=false;}};
+$("#check-publication").onclick = async()=>{const button=$("#check-publication");button.disabled=true;try{await monitorPublication(publication?.result?.sha);}finally{button.disabled=false;}};
 $("#publish").onclick = () => {
-  if (!sessionInfo.permissions.publish || publishing) return;
+  if (!sessionInfo.permissions.publish || publishing||sessionUnverified) return;
   $("#publish-description").textContent = sessionInfo.mode === "local" ? "صفحه و تصاویر در پروژه محلی ذخیره می‌شوند. هیچ Push یا Deploy انجام نمی‌شود." : customerExperience ? `تمام تغییرات صفحهٔ «${model().page.title}» برای انتشار ثبت می‌شوند. پیش‌نویس و تاریخچه محفوظ می‌مانند.` : "صفحه و تصاویر در GitHub ثبت می‌شوند؛ روند استقرار تنظیم‌شده ممکن است آغاز شود.";
   const unlockIds=requiredUnlocks(base.model,model());
   $('#publish-unlock-group').hidden=!unlockIds.length;
@@ -715,12 +766,13 @@ $("#publish").onclick = () => {
 $('#publish-unlock-confirm').onchange=event=>{$('#publish-confirm').disabled=!event.target.checked&&requiredUnlocks(base.model,model()).length>0;};
 $("#publish-cancel").onclick = () => $("#publish-dialog").close();
 $("#publish-confirm").onclick = async () => {
-  if (publishing || !sessionInfo.permissions.publish) return;
+  if (publishing || !sessionInfo.permissions.publish||sessionUnverified) return;
   const unlockIds=requiredUnlocks(base.model,model()).sort();
   if(unlockIds.length&&!$('#publish-unlock-confirm').checked)return notice('برای ثبت تغییرات زیر ظرف قفل‌شده، تأیید بازکردن قفل را انتخاب کنید.');
   $("#publish-dialog").close(); publishing = true;
   $(".workspace").inert = true;
   $("#publish").disabled = true; $("#publication-status").textContent = "در حال اعتبارسنجی و ثبت…";
+  $('#publication-status').dataset.state='pending';
   try {
     // Upgrade local images from Task 1 drafts through the same real optimizer.
     const normalized = clone(model());
@@ -738,7 +790,7 @@ $("#publish-confirm").onclick = async () => {
     await dbRecord(key,publishRequest);
     const result = await api("/builder/publish",{requestId:publishRequest.requestId,model:payload,...(unlockIds.length?{unlockIds}:{})});
     if(payload.base.creation)await dbRecord(`prepared:${user}:${currentPath}`,null);
-    publication = {...publishRequest,result}; await dbRecord(key,publication);
+    publicationEpoch++;publication = {requestId:publishRequest.requestId,fingerprint:publishRequest.fingerprint,result,...(publishRequest.result?.sha===result.sha&&publishRequest.lastVerified?{lastVerified:publishRequest.lastVerified}:{})}; await dbRecord(key,publication);
     await dbRecord(`archive:${storageKey}:${Date.now()}`,encodeDraft(history));
     preview = true; document.body.classList.add("preview"); $("#preview").setAttribute("aria-pressed","true");
     $("#continue-editing").hidden = false; $("#check-publication").hidden = result.mode === "local";
@@ -746,7 +798,7 @@ $("#publish-confirm").onclick = async () => {
     if(result.mode!=='local')monitorPublication(result.sha);
     drawSelection(); updateHistory();
   } catch (error) { $("#publication-status").textContent = `${error.message} پیش‌نویس و تاریخچه حفظ شدند.`; notice(error.message); }
-  finally { publishing = false; $(".workspace").inert = false; $("#publish").disabled = !!publication?.result || !sessionInfo.permissions.publish; updateHistory(); properties(); }
+  finally { publishing = false; $(".workspace").inert = false; $("#publish").disabled = sessionUnverified||!!publication?.result || !sessionInfo.permissions.publish; updateHistory(); properties(); }
 };
 async function refreshLibrary(){library=await api('/library');const previous=$('#page-selector').value;$('#page-selector').replaceChildren();for(const page of library.pages){const option=document.createElement('option');option.value=page.path;option.textContent=`${page.language.toUpperCase()} · ${page.route}`;$('#page-selector').append(option);}$('#page-selector').value=previous;return library;}
 function blockLibrary(){const query=$('#block-search').value.trim().toLowerCase(),holder=$('#block-list');holder.replaceChildren();for(const block of BLOCKS.filter(b=>[b.label,b.category,b.description,b.id].join(' ').toLowerCase().includes(query))){const button=document.createElement('button');button.dataset.block=block.id;button.draggable=true;const visual=document.createElement('span');visual.className='block-preview';visual.textContent=block.preview;button.append(visual,document.createTextNode(block.label));const small=document.createElement('small');small.textContent=block.description;button.append(small);button.onclick=()=>insertBlock(block.id);button.ondragstart=event=>{event.dataTransfer.setData('text/x-baran-block',block.id);event.dataTransfer.effectAllowed='copy';};holder.append(button);}}

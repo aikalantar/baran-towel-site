@@ -2,6 +2,7 @@ import {History,clone} from '../builder/model.js';
 import {lockedBy} from '../builder/locks.js';
 import {createDraftSafety} from '../draft-safety.js';
 import {FONT_CATALOG} from '../builder/fonts.js';
+import {customerPublicationMessage,publicationVerified} from '../builder/publication-status.js';
 import {CUSTOMER_CONTENT,CUSTOMER_STYLE_KEYS,customerCanStyle,customerCanAdd,customerCanRemove,customerContentNode,customerSetStyle,protectedCustomerRegion} from '../builder/customer-capabilities.js';
 
 // Suggestions are editable routes, never identities. Server route policy remains authoritative.
@@ -41,6 +42,21 @@ export function installCustomerEditor(ctx){
   });
   async function run(fn){if(busy)return;busy=true;body.inert=true;$('#customer-error').textContent='';dialog.setAttribute('aria-busy','true');try{await fn();}catch(e){$('#customer-error').textContent=e.message;ctx.notice(e.message);}finally{busy=false;body.inert=false;dialog.removeAttribute('aria-busy');}}
   function open(title){$('#customer-tasks').hidden=true;$('#customer-menu').setAttribute('aria-expanded','false');sheet.hidden=true;body.replaceChildren();$('#customer-error').textContent='';$('#customer-dialog-title').textContent=title;if(!dialog.open)dialog.showModal();}
+  function publicationControls(result,label){
+    if(ctx.getSession().mode==='local')return;
+    const state=note('تغییرات ثبت شدند؛ وضعیت انتشار آنلاین در حال بررسی است.');state.setAttribute('role','status');body.append(state);
+    let timer,inFlight=false,verified=false;const started=Date.now();
+    const check=async()=>{
+      clearTimeout(timer);if(inFlight||!state.isConnected)return;inFlight=true;
+      try{const status=await ctx.api('/builder/status?sha='+encodeURIComponent(result.sha));if(!state.isConnected)return;verified=publicationVerified(status);state.textContent=customerPublicationMessage(status);if(!verified&&!['failure','error','superseded','inactive'].includes(status.deployment)&&Date.now()-started<10*60*1000)timer=setTimeout(()=>{if(!document.hidden)void check();},15000);}
+      catch{state.textContent=customerPublicationMessage({reason:'check_timeout'});}
+      finally{inFlight=false;}
+    };
+    body.append(button(label,check));void check();
+    // A closed/replaced dialog cannot keep a background polling loop alive.
+    const resume=()=>{if(!state.isConnected||!dialog.open){clearTimeout(timer);window.removeEventListener('online',resume);document.removeEventListener('visibilitychange',resume);}else if(!document.hidden&&!verified)void check();};
+    window.addEventListener('online',resume);document.addEventListener('visibilitychange',resume);dialog.addEventListener('close',resume,{once:true});
+  }
   async function persist(){if(await ctx.save()===false)throw Error('برای حفظ تغییرات، ذخیره را دوباره امتحان کنید یا پشتیبان بگیرید.');}
   function revealSelection(){
     const e=ctx.getElement(ctx.getSelected()[0]);
@@ -51,7 +67,7 @@ export function installCustomerEditor(ctx){
     if(e.type==='image')$('#selected-image-preview').src=e.content.src;else $('#selected-image-preview').removeAttribute('src');
     sheet.hidden=false;sheet.scrollTop=0;
   }
-  $('#selection-close').onclick=()=>{sheet.hidden=true;$('.canvas-hit-plane')?.focus();};
+  $('#selection-close').onclick=()=>{sheet.hidden=true;$('.canvas-hit-plane')?.focus({preventScroll:true});};
   $('#customer-menu').onclick=()=>{const n=$('#customer-tasks');n.hidden=!n.hidden;$('#customer-menu').setAttribute('aria-expanded',String(!n.hidden));};
   $('#customer-dialog-close').onclick=()=>{if(!busy)dialog.close();};
   dialog.addEventListener('cancel',e=>{if(busy)e.preventDefault();});
@@ -66,9 +82,17 @@ export function installCustomerEditor(ctx){
     }
     body.append(button('باز کردن نسخهٔ فعلی',()=>{$('#load-current').click();dialog.close();}));
   });
-  function fit(){const width=$('.canvas').clientWidth;if(!width)return;ctx.setDevice(width<=640?'mobile':width<1024?'tablet':'desktop',width);}
+  let fittedWidth;
+  function fit(){const width=$('.canvas').clientWidth;if(!width)return;const device=width<=640?'mobile':width<1024?'tablet':'desktop';if(width!==fittedWidth||ctx.getDevice()!==device){fittedWidth=width;ctx.setDevice(device,width);}}
   new ResizeObserver(()=>requestAnimationFrame(fit)).observe($('.canvas'));
-  window.visualViewport?.addEventListener('resize',()=>{if(sheet.contains(document.activeElement))document.activeElement.scrollIntoView({block:'nearest'});});
+  function fitViewport(){
+    const viewport=window.visualViewport;
+    if(viewport&&viewport.scale===1){$('#builder').style.height=viewport.height+'px';$('#builder').style.top=viewport.offsetTop+'px';}
+    const input=document.activeElement;
+    if(sheet.contains(input)&&/INPUT|TEXTAREA|SELECT/.test(input.tagName)){const r=input.getBoundingClientRect(),s=sheet.getBoundingClientRect();if(r.bottom>s.bottom-8)sheet.scrollTop+=r.bottom-s.bottom+8;else if(r.top<s.top+8)sheet.scrollTop-=s.top+8-r.top;}
+  }
+  window.visualViewport?.addEventListener('resize',fitViewport);
+  window.visualViewport?.addEventListener('scroll',fitViewport);fitViewport();
   function refresh(){
     const session=ctx.getSession();$('#studio-link').hidden=!session?.permissions?.studio;
     $('#customer-publish-help').hidden=!session?.user||!!session.permissions?.publish;
@@ -147,8 +171,9 @@ export function installCustomerEditor(ctx){
     const confirm=(action,label)=>{
       const value=title.value.trim();if(action==='rename'&&!value)throw Error('عنوان صفحه را بنویسید.');
       open('تأیید '+label);body.append(note('عملیات «'+label+'» برای «'+page.title+'» ثبت شود؟ سایت تا این تأیید تغییر نمی‌کند.'),button('تأیید '+label,async()=>{
-        await ctx.api('/builder/pages/action',{path:page.path,head,action,requestId:crypto.randomUUID(),...(action==='rename'?{title:value}:{confirm:page.path})});
+        const result=await ctx.api('/builder/pages/action',{path:page.path,head,action,requestId:crypto.randomUUID(),...(action==='rename'?{title:value}:{confirm:page.path})});
         body.replaceChildren(note('عملیات صفحه ثبت شد؛ وضعیت انتشار آنلاین هنوز تأیید نشده است.'),button('بازگشت به صفحات',pages));
+        publicationControls(result,'بررسی انتشار صفحه');
       }));
     };
     if(page.status==='published'&&allowed.includes('rename'))body.append(button('انتشار عنوان صفحه',()=>confirm('rename','تغییر عنوان')));
@@ -244,7 +269,7 @@ export function installCustomerEditor(ctx){
         // Store the exact successful receipt before allowing a second publication.
         contact.published=result;await ctx.dbRecord(contactKey(),contact);
         body.replaceChildren(note(ctx.getSession().mode==='local'?'اطلاعات تماس در فایل‌های محلی ثبت شد؛ انتشار آنلاین انجام نشده است.':'اطلاعات تماس ثبت شد؛ وضعیت انتشار آنلاین هنوز تأیید نشده است.'));
-        if(ctx.getSession().mode!=='local')body.append(button('بررسی انتشار تماس',async()=>{const status=await ctx.api('/builder/status?sha='+encodeURIComponent(result.sha));body.append(note(status.deployment==='success'&&['cloudflare-active-production-version','github-cloudflare-production-deployment'].includes(status.evidence)?'انتشار آنلاین همین نسخه تأیید شد.':'انتشار آنلاین همین نسخه هنوز تأیید نشده است.'));}));
+        publicationControls(result,'بررسی انتشار تماس');
         body.append(button('باز کردن اطلاعات ثبت‌شده',async()=>{await ctx.dbRecord(`archive:${contactKey()}:${Date.now()}`,contact);contact=null;await ctx.dbRecord(contactKey(),null);await contacts();}));
       }));
     });publish.disabled=!ctx.getSession().permissions.publish||!!contact.published;body.append(publish);

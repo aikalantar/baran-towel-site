@@ -18,13 +18,13 @@ export function installCanvasInput(ctx){
   },true);
   function local(event){const r=frame.getBoundingClientRect();return {x:(event.clientX-r.left)*frame.offsetWidth/r.width,y:(event.clientY-r.top)*frame.offsetHeight/r.height};}
   function mapped(event,target){const p=local(event);return {target:target||ctx.getDocument()?.elementFromPoint(p.x,p.y),clientX:p.x,clientY:p.y,pointerId:event.pointerId,pointerType:event.pointerType,button:event.button,shiftKey:event.shiftKey,altKey:event.altKey,captureTarget:plane,preventDefault:()=>event.preventDefault()};}
-  function cancel(){active=null;ctx.cancelGesture();}
+  function cancel(event){if(active)releaseClick={id:active.id,x:active.lastX,y:active.lastY,time:event?.timeStamp??performance.now()};active=null;ctx.cancelGesture();}
   plane.addEventListener('pointerdown',event=>{
     if(ctx.isPreview()||ctx.isReadOnly())return;
     // Suppress compatibility mouse clicks: opening a sheet beneath the finger
     // must not let the release click activate its newly exposed parent button.
     event.preventDefault();
-    if(active){cancel();return;}
+    if(active){cancel(event);return;}
     const e=mapped(event);if(!e.target)return;
     const handle=e.target.closest('[data-resize],[data-move]');
     active={id:event.pointerId,x:event.clientX,y:event.clientY,lastY:event.clientY,lastX:event.clientX,pan:false,gesture:event.pointerType!=='touch'||!!handle,target:e.target};
@@ -53,7 +53,11 @@ export function installCanvasInput(ctx){
     if(end.gesture)ctx.endGesture(mapped(event,end.target));
     else if(!end.pan)ctx.selectAt(mapped(event,end.target));
   });
-  plane.addEventListener('pointercancel',cancel);plane.addEventListener('lostpointercapture',()=>{if(active)cancel();});
+  plane.addEventListener('pointercancel',cancel);plane.addEventListener('lostpointercapture',event=>{if(active)cancel(event);});
+  // iOS can still chain a touch to the viewport at an iframe boundary. This
+  // surface owns single-finger panning; sheets and multi-touch stay native.
+  plane.addEventListener('touchmove',event=>{if(active&&event.touches.length===1&&event.cancelable)event.preventDefault();},{passive:false});
+  plane.addEventListener('touchstart',event=>{if(event.touches.length>1)cancel(event);},{passive:true});
   plane.addEventListener('wheel',event=>{const doc=ctx.getDocument();if(!doc)return;const before=doc.defaultView.scrollY;doc.defaultView.scrollBy(0,event.deltaY*(event.deltaMode===1?20:1));if(before!==doc.defaultView.scrollY){event.preventDefault();ctx.drawSelection();}},{passive:false});
   plane.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();ctx.revealSelection(true);}else ctx.keyboard(event);});
   plane.addEventListener('click',event=>event.preventDefault());

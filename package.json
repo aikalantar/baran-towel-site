@@ -7,7 +7,7 @@
     "dev": "node scripts/cms-local.mjs",
     "dev:cloudflare": "wrangler dev --port 4175",
     "cms:setup": "node scripts/cms-setup.mjs",
-    "test": "node --test --test-concurrency=2 test/cms.test.mjs test/cms-setup.test.mjs test/builder.test.mjs test/builder-publish.test.mjs test/release-security.test.mjs test/schema-v2.test.mjs test/blocks.test.mjs test/pages.test.mjs test/pro-controls.test.mjs test/freeform-publish.test.mjs test/locks.test.mjs test/local-history.test.mjs test/migration-v2.test.mjs test/task6-blocks-controls.test.mjs test/task6-security-pages.test.mjs test/local-resilience.test.mjs test/stabilization.test.mjs test/navigation-pwa.test.mjs test/direct-edit.test.mjs test/identity-interop.test.mjs test/customer-editor.test.mjs test/customer-publishing.test.mjs test/customer-freedom.test.mjs test/combined-release.test.mjs",
+    "test": "node --test --test-concurrency=2 test/cms.test.mjs test/cms-setup.test.mjs test/builder.test.mjs test/builder-publish.test.mjs test/release-security.test.mjs test/schema-v2.test.mjs test/blocks.test.mjs test/pages.test.mjs test/pro-controls.test.mjs test/freeform-publish.test.mjs test/locks.test.mjs test/local-history.test.mjs test/migration-v2.test.mjs test/task6-blocks-controls.test.mjs test/task6-security-pages.test.mjs test/local-resilience.test.mjs test/stabilization.test.mjs test/navigation-pwa.test.mjs test/direct-edit.test.mjs test/identity-interop.test.mjs test/customer-editor.test.mjs test/customer-publishing.test.mjs test/customer-freedom.test.mjs test/combined-release.test.mjs test/publication-proof.test.mjs",
     "test:builder": "node test/builder-browser.mjs",
     "test:builder:publish": "node test/builder-publish-browser.mjs",
     "test:release:runtime": "npm run deploy:check && node test/release-runtime.mjs",
@@ -38,7 +38,9 @@
     "test:publishing:browser": "node test/customer-publishing-browser.mjs",
     "test:customer:freedom": "node --test test/customer-freedom.test.mjs",
     "test:customer:freedom:browser": "node test/customer-publishing-browser.mjs",
-    "test:customer:freedom:webkit": "node test/customer-freedom-webkit.mjs"
+    "test:customer:freedom:webkit": "node test/customer-freedom-webkit.mjs",
+    "test:iphone:publishing": "node test/iphone-publishing-browser.mjs",
+    "test:publication:proof": "node --test test/publication-proof.test.mjs"
   },
   "dependencies": {
     "linkedom": "^0.18.12"

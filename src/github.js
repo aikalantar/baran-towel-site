@@ -1,11 +1,13 @@
-import { CMSFailure } from "./content.js";
+import { CMSFailure,SITE } from "./content.js";
 import {cloudflareDeployment,providerURL} from './deployment.js';
+import {publicPublicationProof} from './publication-proof.js';
 
 export class GitHubRepository {
   constructor(env) {
     this.repository = env.CMS_REPOSITORY;
     this.branch = env.CMS_BRANCH || "main";
     this.token = env.CMS_GITHUB_TOKEN;
+    this.publicOrigin=env.CMS_SITE_ID||SITE;
     this.deploymentConfig = {CMS_CF_ACCOUNT_ID:env.CMS_CF_ACCOUNT_ID,CMS_CF_WORKER_NAME:env.CMS_CF_WORKER_NAME,CMS_CF_API_TOKEN:env.CMS_CF_API_TOKEN};
     if (
       !/^[\w.-]+\/[\w.-]+$/.test(this.repository) ||
@@ -87,7 +89,7 @@ export class GitHubRepository {
     if (!file.content || file.encoding !== "base64") throw new CMSFailure("تصویر قابل خواندن نیست.");
     return Uint8Array.from(atob(file.content.replace(/\s/g,"")), c => c.charCodeAt(0));
   }
-  async publicationStatus(sha) {
+  async publicationStatus(sha,options={}) {
     if (!/^[a-f0-9]{40}$/.test(sha)) throw new CMSFailure("شناسه انتشار معتبر نیست.");
     // A generic successful build check is not proof of a production deployment.
     const result = { commit:"unknown", deployment:"unknown", stage:"unverified", evidence:null, checkedAt:new Date().toISOString() };
@@ -102,19 +104,24 @@ export class GitHubRepository {
         if((await this.head())!==sha)return {...result,deployment:'superseded',reason:'newer_commit_exists'};
         return {...result,...cloudflare};
       }
-      if(cloudflare)return {...result,...cloudflare};
       const trusted = actor => actor?.type === "Bot" && ["cloudflare-workers-and-pages[bot]","cloudflare-pages[bot]"].includes(actor.login);
-      const deployments = await this.call("deployments?per_page=100");
-      const production = deployments.filter(d => d.production_environment === true && trusted(d.creator)).sort((a,b)=>Date.parse(b.created_at||0)-Date.parse(a.created_at||0))[0];
-      if (!production || production.sha !== sha) return {...result,reason:"provider_evidence_unavailable"};
-      const statuses = await this.call(`deployments/${production.id}/statuses?per_page=1`);
-      const latest = statuses[0];
-      if (!latest || !trusted(latest.creator)) return result;
+      let deployments=[];
+      try{deployments=await this.call("deployments?per_page=100");}catch{/* Public content can still provide independent publication evidence. */}
+      const production = (Array.isArray(deployments)?deployments:[]).filter(d => d.production_environment === true && trusted(d.creator)).sort((a,b)=>Date.parse(b.created_at||0)-Date.parse(a.created_at||0))[0];
+      let latest;
+      if(production?.sha===sha){try{latest=(await this.call(`deployments/${production.id}/statuses?per_page=1`))[0];}catch{/* Fall back to the independently served artifacts. */}}
+      if(latest&&trusted(latest.creator)){
       result.deployment = ["success","failure","error","inactive","queued","pending","in_progress"].includes(latest.state) ? latest.state : "unknown";
       result.stage = result.deployment === "success" ? "deployment_verified" : ["queued","pending","in_progress"].includes(result.deployment) ? "deployment_started" : ["failure","error"].includes(result.deployment) ? "deployment_failed" : "commit_created";
       result.evidence = "github-cloudflare-production-deployment";
       if((await this.head())!==sha)return {...result,deployment:'superseded',stage:'commit_created',evidence:null,reason:'newer_commit_exists'};
       const url=providerURL(latest.log_url);if(url)result.url=url;
+      if(result.deployment==='success')return result;
+      }
+      const proof=await publicPublicationProof(this,sha,options);
+      if((await this.head())!==sha)return {...result,deployment:'superseded',stage:'commit_created',evidence:null,reason:'newer_commit_exists'};
+      if(proof.deployment==='success')return {...result,...proof,evidence:proof.evidence};
+      result.reason=cloudflare?.reason||proof.reason||'provider_evidence_unavailable';
     } catch { result.deployment = "unknown"; result.reason="provider_evidence_unavailable"; }
     return result;
   }

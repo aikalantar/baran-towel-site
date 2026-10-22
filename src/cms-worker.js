@@ -196,8 +196,10 @@ export async function handleCMS(request, env, options = {}) {
       if (!cmsPermissions(user).publish) throw new CMSFailure('انتشار برای این حساب مجاز نیست.',403);
       return json(await publishBuilder(repo,await readBody(request),user,localMode));
     }
-    if (endpoint === "/builder/status" && request.method === "GET")
-      return json(await repo.publicationStatus(url.searchParams.get("sha")));
+    if (endpoint === "/builder/status" && request.method === "GET") {
+      const path=url.searchParams.get('path');if(path)assertPageAccess(user,path);
+      return json(await repo.publicationStatus(url.searchParams.get("sha"),{...(path?{path}:{}),canReadPage:path=>canAccessPage(user,path)}));
+    }
     if (endpoint === "/library" && request.method === "GET") {
       const head = await repo.head();
       const tree = await repo.tree(head);

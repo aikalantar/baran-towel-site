@@ -4,7 +4,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import {startLocal} from '../scripts/cms-local.mjs';
 
-const folder=path.resolve('.cms-local/task14-qa');await fs.mkdir(folder,{recursive:true});
+const folder=path.resolve(process.env.CMS_QA_DIR||'.cms-local/task14-qa');await fs.mkdir(folder,{recursive:true});
 const root=await fs.mkdtemp(path.join(folder,'site-'));await fs.cp('public',path.join(root,'public'),{recursive:true});
 const server=await startLocal(root,0),origin=`http://127.0.0.1:${server.address().port}`,results=[],errors=[];
 const original=await fs.readFile('public/index.html');
@@ -31,7 +31,7 @@ for(const [engine,name,options]of [[chromium,'chromium-touch',devices['Pixel 7']
   const r=await page.locator(control).boundingBox();assert.ok(r.y>=0&&r.y+r.height<=page.viewportSize().height+1,'first contextual control is on screen');
  }
  try{
-  await page.goto(origin+'/admin/builder/');await ready();assert.equal(requests.length,0);assert.equal(await page.locator('[data-block]').count(),16);assert.equal(await page.locator('body').getAttribute('data-ui-mode'),'simple');
+  await page.goto(origin+'/admin/builder/');await ready();const publishedFonts=new Set([...original.toString().matchAll(/\/assets\/builder-fonts\/[a-z0-9-]+\.woff2/g)].map(m=>m[0]));assert.ok(requests.every(url=>publishedFonts.has(new URL(url).pathname)),'only fonts already published by the customer may load before selection');assert.equal(await page.locator('[data-block]').count(),16);assert.equal(await page.locator('body').getAttribute('data-ui-mode'),'simple');
   await page.locator('#direct-edit-toggle').click();await page.waitForFunction(()=>document.body.classList.contains('direct-edit'));
   const dimensions=await page.evaluate(()=>({canvas:document.querySelector('.canvas').getBoundingClientRect().toJSON(),bar:document.querySelector('#direct-edit-bar').getBoundingClientRect().toJSON(),frame:document.querySelector('#page').getBoundingClientRect().toJSON(),width:innerWidth,height:innerHeight}));
   assert.ok(dimensions.canvas.height>=dimensions.height-dimensions.bar.height-2);assert.ok(dimensions.frame.width<=dimensions.width);assert.equal(await page.locator('#page').getAttribute('sandbox'),'allow-same-origin');ok(name,'full viewport canvas, compact controls, secure real iframe and 16 blocks');
@@ -44,17 +44,18 @@ for(const [engine,name,options]of [[chromium,'chromium-touch',devices['Pixel 7']
   await tap('.bridal-promo-home a.button','button');assert.equal(await page.locator('#href').inputValue(),'/bridal-towels/');assert.equal(await frame().locator('body').evaluate(()=>location.href),oldFrameURL);ok(name,'existing link/button is selected; Edit prevents navigation');
   await tap('#hero-title','heading');const oldText=await page.locator('#text').inputValue();await page.locator('#text').fill('لمس مستقیم · Direct editing');await saved();
   // The selected breakpoint is real canvas width; inheritance stays untouched elsewhere.
-  await page.locator('#pro-fontFamily').selectOption('Vazirmatn');await saved();
-  await page.locator('#font-preview').evaluate(n=>document.fonts.load('20px Vazirmatn',n.textContent));
-  assert.ok(requests.some(u=>u.endsWith('/vazirmatn-variable.woff2')));assert.equal(requests.some(u=>/inter-variable|estedad-variable|shabnam|sahel|lato/.test(u)),false);
+  const oldFont=await page.locator('#pro-fontFamily').inputValue(),chosenFont=oldFont==='Vazirmatn'?'Estedad':'Vazirmatn',chosenFile=chosenFont==='Estedad'?'estedad-variable.woff2':'vazirmatn-variable.woff2';
+  await page.locator('#pro-fontFamily').selectOption(chosenFont);await saved();
+  await page.locator('#font-preview').evaluate((n,font)=>document.fonts.load('20px '+font,n.textContent),chosenFont);
+  assert.ok(requests.some(u=>u.endsWith('/'+chosenFile)));assert.ok(requests.every(u=>publishedFonts.has(new URL(u).pathname)||u.endsWith('/'+chosenFile)));
   const sample=await page.locator('#font-preview').textContent();assert.equal(sample,'لمس مستقیم · Direct editing');
-  await page.locator('#undo').click();await saved();assert.equal(await page.locator('#pro-fontFamily').inputValue(),'');await page.locator('#redo').click();await saved();assert.equal(await page.locator('#pro-fontFamily').inputValue(),'Vazirmatn');ok(name,'font choice loads only selected family; real text preview, autosave and Undo/Redo');
+  await page.locator('#undo').click();await saved();assert.equal(await page.locator('#pro-fontFamily').inputValue(),oldFont);await page.locator('#redo').click();await saved();assert.equal(await page.locator('#pro-fontFamily').inputValue(),chosenFont);ok(name,'font choice loads only selected family; real text preview, autosave and Undo/Redo');
   const before=(await draft()).history;await page.locator('#mode-advanced').click();assert.ok(await page.locator('#pro-layout-mode').isVisible());assert.ok(await page.locator('#pro-letterSpacing').isVisible());await page.locator('#mode-simple').click();assert.deepEqual((await draft()).history,before);ok(name,'Simple/Advanced preserves professional capabilities and draft history');
   await close();await page.locator('#preview').click();assert.equal(await page.locator('.canvas-hit-plane').isVisible(),false);
   const link=frame().locator('.bridal-promo-home a.button');await link.evaluate(n=>n.scrollIntoView({block:'center'}));await link.click();await page.waitForFunction(()=>document.querySelector('#page').contentDocument?.location.pathname==='/bridal-towels/');
-  await page.locator('#preview').click();await frame().locator('#hero-title').filter({hasText:'لمس مستقیم'}).waitFor();await tap('#hero-title','heading');assert.equal(await page.locator('#pro-fontFamily').inputValue(),'Vazirmatn');ok(name,'Preview navigates normally; returning to Edit restores unchanged draft and selection');
+  await page.locator('#preview').click();await frame().locator('#hero-title').filter({hasText:'لمس مستقیم'}).waitFor();await tap('#hero-title','heading');assert.equal(await page.locator('#pro-fontFamily').inputValue(),chosenFont);ok(name,'Preview navigates normally; returning to Edit restores unchanged draft and selection');
   await page.locator('#direct-exit').click();assert.equal(await page.locator('.toolbar #save').count(),1);assert.equal(await page.locator('.inspector #selection-inspector').count(),1);
-  await page.reload();await ready();await page.locator('#direct-edit-toggle').click();await tap('#hero-title','heading');assert.equal(await page.locator('#text').inputValue(),'لمس مستقیم · Direct editing');assert.equal(await page.locator('#pro-fontFamily').inputValue(),'Vazirmatn');ok(name,'exit restores original controls; refresh restores saved text/font/history');
+  await page.reload();await ready();await page.locator('#direct-edit-toggle').click();await tap('#hero-title','heading');assert.equal(await page.locator('#text').inputValue(),'لمس مستقیم · Direct editing');assert.equal(await page.locator('#pro-fontFamily').inputValue(),chosenFont);ok(name,'exit restores original controls; refresh restores saved text/font/history');
   // Chromium offers a real native touch sequence API. WebKit tap above is native;
   // physical iOS scrolling/inertia is deliberately not claimed by this test.
   if(engine===chromium&&options.hasTouch){

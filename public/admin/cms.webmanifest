@@ -8,6 +8,8 @@
   "start_url": "/admin/",
   "scope": "/admin/",
   "display": "standalone",
+  "prefer_related_applications": false,
+  "related_applications": [{ "platform": "webapp", "url": "https://luxtowelco.com/admin/cms.webmanifest", "id": "https://luxtowelco.com/admin/" }],
   "background_color": "#f6f5f0",
   "theme_color": "#475642",
   "icons": [
